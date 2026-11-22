@@ -594,7 +594,7 @@ a.chip{text-decoration:none}
 
   var R = { playing: false, phase: 'idle', timer: 0, raf: 0, waitStart: 0, waitMs: 0, token: 0, down: false, opening: false, stale: false, slow: null };
   newNight();
-  var PACE = { slow: 7000, normal: 4000, fast: 2000 };
+  var PACE = { slow: 6000, normal: 4000, fast: 2000 };
   function paceName(v) { return T('pace.' + v); }
 
   var toastT; function toast(m, ms) { var t = $('toast'); t.textContent = m; t.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(function () { t.classList.remove('show'); }, ms || 2400); }
