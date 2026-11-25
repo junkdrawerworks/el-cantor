@@ -281,6 +281,7 @@ a.chip{text-decoration:none}
 .mini i.q{background:var(--gold)}
 .pat b{display:block;font:400 15px var(--disp)}
 .pat small{display:block;font-size:11.5px;color:var(--ink2);text-wrap:balance}
+.autopk{border-color:var(--teal)}.autopk .apk b{display:block;font:400 19px var(--disp);margin-top:2px}.autopk .note{margin-top:4px}.autopk .row{flex-wrap:nowrap;align-items:flex-start}
 /* Which lines count, under Línea: quick choices, then a little tabla with a handle for each line */
 .lines{grid-column:1/-1;background:var(--paper);border:1px solid var(--teal);border-radius:12px;padding:10px 12px 12px;display:flex;flex-wrap:wrap;gap:10px 16px;align-items:flex-start}
 .lnhd{flex:1 1 100%}.lnhd b{display:block;font:400 15px var(--disp)}.lnhd span{display:block;font-size:12px;color:var(--ink2)}
@@ -539,9 +540,12 @@ a.chip{text-decoration:none}
   // 'first' (first to shout wins); late, for a ¡Lotería! called late, 'counts' or 'strict' (too late after the next card).
   // checkWith: the checker's way of the last check ('printed', 'cards' or 'ours'), so the next one opens on it.
   // me: the person from My tablas on this device who calls and plays too ('' for nobody), meName their name then.
-  function freshSettings() { return { speak: true, style: 'name', voice: '', rate: 1, pace: 'normal', sound: true, awake: true, check: false, two: 'next', late: 'counts', checkWith: '', me: '', meName: '' }; }
+  function freshSettings() { return { speak: true, style: 'name', voice: '', rate: 1, pace: 'normal', sound: true, awake: true, check: false, two: 'next', late: 'counts', checkWith: '', me: '', meName: '', auto: false }; }
   function freshPrint() { return { name: '', count: 12, per: 1, deck: false, paper: L.defaultPaper() }; }
-  function fresh() { return { order: shuffled(), pos: 0, round: 1, patterns: L.CLASICO.slice(), lines: '', juego: '', printed: {}, wins: [], tie: null, print: freshPrint(), settings: freshSettings() }; }
+  // rid: the round's own id, so El Cantor picks the game counts each round's game once. auto: what it keeps for that
+  // (deck.js, autoGood), on this device only.
+  function newRid() { return Date.now().toString(36) + '.' + rand(1e6); }
+  function fresh() { return { order: shuffled(), pos: 0, round: 1, rid: newRid(), auto: L.autoGood(null), patterns: L.CLASICO.slice(), lines: '', juego: '', printed: {}, wins: [], tie: null, print: freshPrint(), settings: freshSettings() }; }
   var C = fresh();
   function goodWins(w) { return Array.isArray(w) ? w.filter(function (x) { return x && typeof x === 'object'; }).map(function (x) { if (typeof x.t !== 'number') x.t = 0; return x; }) : []; } // a damaged save may hold nulls, or a win with no time
   // How many tablas El Cantor printed of each juego, {CANELA: 12}, so the checker can say a number past them is misheard.
@@ -559,6 +563,8 @@ a.chip{text-decoration:none}
     C.patterns = Array.isArray(C.patterns) ? C.patterns.filter(function (id) { return typeof id === 'string' && L.pat(id); }) : []; // and Línea on some of its lines, 'linea-0'
     if (!C.patterns.length) C.patterns = L.CLASICO.slice();
     if (!L.isLinea(C.lines)) C.lines = '';
+    C.auto = L.autoGood(C.auto);
+    if (typeof C.rid !== 'string' || !C.rid) C.rid = newRid();
     C.wins = goodWins(C.wins);
     C.printed = goodPrinted(C.printed);
     if (typeof C.juego !== 'string') C.juego = '';
@@ -590,7 +596,10 @@ a.chip{text-decoration:none}
   // A new night starts the round numbers again at 1: the round left from the last night shows as round 1, and if it
   // is shuffled before a card of it is called tonight, the new one is round 1 instead.
   var NIGHT = 6 * 3600e3;
-  function newNight() { if (C.last && Date.now() - C.last >= NIGHT) { C.round = 1; R.stale = true; C.tie = null; } } // a tie-break left from the last night is over
+  function newNight() {
+    if (C.last && Date.now() - C.last >= NIGHT) { C.round = 1; R.stale = true; C.tie = null; } // a tie-break left from the last night is over
+    if (!C.pos && picked() && L.autoNight(C.auto, Date.now()) && !L.isClasico(C.patterns)) autoApply(); // last night's pick: a night opens with Clásico
+  }
   function nights() { // oldest first: { start, end, wins }
     var out = [];
     C.wins.slice().sort(function (a, b) { return a.t - b.t; }).forEach(function (x) { var n = out[out.length - 1]; if (n && x.t - n.end < NIGHT) { n.wins.push(x); n.end = x.t; } else out.push({ start: x.t, end: x.t, wins: [x] }); });
@@ -830,7 +839,9 @@ a.chip{text-decoration:none}
     clearTimeout(R.timer); R.timer = 0; R.opening = false;
     if (C.tie && tieCheck()) return; // a card turned before the last one was looked at for the tie-break
     if (C.pos >= 54) { finish(); return; }
-    C.pos++; R.stale = false; save(); wake();
+    C.pos++; R.stale = false;
+    L.autoCard(C.auto, Date.now(), Math.random, C.pos === 1 ? C.patterns : null, C.rid); // the night's cards and the round's game, for El Cantor picks the game
+    save(); wake();
     var c = card(cur());
     snap(); $('live').textContent = c.name;
     R.phase = 'speaking';
@@ -895,7 +906,9 @@ a.chip{text-decoration:none}
   function finish() { R.playing = false; R.phase = 'idle'; clearTimeout(R.timer); renderAll(); }
   function newRound() {
     hush(); pause(); R.phase = 'idle'; R.opening = false;
-    C.order = shuffled(); C.pos = 0; C.round = R.stale ? 1 : C.round + 1; R.stale = false; C.tie = null; C.mine = null; R.co = null; R.slow = null; save(); renderTie();
+    C.order = shuffled(); C.pos = 0; C.round = R.stale ? 1 : C.round + 1; R.stale = false; C.tie = null; C.mine = null; R.co = null; R.slow = null; C.rid = newRid();
+    if (C.settings.auto) autoApply();
+    save(); renderTie();
     showCard(false, true); renderAll();
   }
   function newRoundAsk() {
@@ -925,6 +938,25 @@ a.chip{text-decoration:none}
     app.classList.remove('shuffling'); void app.offsetWidth; app.classList.add('shuffling');
     riffleT = setTimeout(function () { app.classList.remove('shuffling'); }, 950);
   }
+  // ---------- El Cantor picks the game ----------
+  // Settings' El Cantor picks the game: each new round starts on the game deck.js's autoPick chooses (see there for the
+  // family's pattern), shown over Ready when you are and at the top of the round's picker, where Done takes it and
+  // another game plays instead, counted as that round's game. Final three, there and in Settings, makes the next three
+  // rounds Siete Loco, La Equis and Tabla Llena; tapped again, it's off.
+  function autoApply() { C.patterns = L.autoPick(C.auto, Date.now(), Math.random); C.auto.pick = C.patterns.slice(); }
+  function sameGame(a, b) { return a.slice().sort().join() === b.slice().sort().join(); }
+  function picked() { return !!C.settings.auto && C.auto.pick.length > 0 && sameGame(C.patterns, C.auto.pick); }
+  function finalK() { var f = L.autoFin(C.auto, Date.now()); return f >= 1 && f <= 3 ? f : 0; }
+  function finalThree() {
+    var on = !finalK(); L.autoFinal(C.auto, on, Date.now()); toast(on ? T('auto.finalToast') : T('auto.finalOff'), on ? 4000 : 2400);
+    if (!C.pos) autoApply(); // this round is the first of them, or back to the usual pick
+    save(); renderTop(); renderMine(); renderCaption();
+  }
+  // Over Ready when you are: the round, and whose pick it is.
+  function readyTop() {
+    if (C.settings.auto && !C.pos && finalK() && picked()) return T('auto.readyFinal', { r: C.round, k: finalK() });
+    return picked() && !C.pos ? T('auto.readyTop', { r: C.round }) : T('cantor.playingRound', { r: C.round });
+  }
   function preload() { for (var i = C.pos; i < Math.min(54, C.pos + 2); i++) { var im = new Image(); im.src = src(C.order[i]); } }
 
   // ---------- render ----------
@@ -949,7 +981,7 @@ a.chip{text-decoration:none}
   function renderCaption() {
     var n = cur(), el = $('cap');
     $('app').classList.toggle('opening', !!R.opening); // the opening call moves the card back and the banderitas
-    var head = '<div class="gm">' + gameHtml(T('cantor.playingRound', { r: C.round }), true) + '</div>';
+    var head = '<div class="gm">' + gameHtml(readyTop(), true) + '</div>';
     if (R.opening) { el.innerHTML = head + '<h2>Corre, se va con…</h2>'; return; }
     if (!n) {
       // A phone shows the icons at the top without their words: the first round says what they do, with the same icons.
@@ -1246,11 +1278,24 @@ a.chip{text-decoration:none}
   function closeSheet() { var s = $('sheet'); if (s.hidden) return; s.hidden = true; s.innerHTML = ''; UI.sheet = null; UI.onVoices = null; UI.onFull = null; UI.onComing = null; UI.onOurs = null; UI.mine = null; var o = UI.opener; UI.opener = null; if (o && o !== document.body && o.isConnected) o.focus({ preventScroll: true }); if (UI.onClose) { var f = UI.onClose; UI.onClose = null; f(); } }
 
   function patternSheet(title) {
-    openSheet('<div class="hd"><h2>' + esc(title || T('whatPlaying')) + '</h2><button class="btn sec sm" type="button" id="ptx">' + T('done') + '</button></div><div class="bd stack"><p class="note">' + T.html('cantor.patsNote_html') + '</p><div class="pats" id="pats"></div></div>');
+    var auto = C.settings.auto && !C.pos; // the round's game being chosen, El Cantor picking it
+    openSheet('<div class="hd"><h2>' + esc(title || T('whatPlaying')) + '</h2><button class="btn sec sm" type="button" id="ptx">' + T('done') + '</button></div><div class="bd stack">' + (auto ? '<div class="card autopk" id="autoPk"></div>' : '') + '<p class="note">' + T.html('cantor.patsNote_html') + '</p><div class="pats" id="pats"></div></div>');
     // A held shape is added while the finger is still down, and the shapes are drawn again; the press is kept here,
     // not on its button, so letting go on the new button doesn't pick that shape on its own.
     var press = { held: false, t: 0 };
+    // El Cantor's pick, at the top: the game it picked, Final three, and, when another game is picked, a way back.
+    function drawAuto() {
+      var el = $('autoPk'); if (!el) return;
+      var k = finalK(), mine = picked();
+      el.innerHTML = '<div class="row sp"><div class="apk"><div class="eyebrow">' + esc(k ? T('auto.finalOn', { k: k }) : T('auto.pick')) + '</div><b>' + esc(L.gameName(C.auto.pick)) + '</b>' +
+        (mine ? '' : '<p class="note">' + esc(T('auto.yours', { game: L.gameName(C.patterns) })) + ' <button type="button" class="linkb" id="autoBack">' + T('auto.back') + '</button></p>') + '</div>' +
+        '<button type="button" class="chip' + (k ? ' on' : '') + '" id="finBtn" aria-pressed="' + !!k + '">' + T('auto.final') + '</button></div>' +
+        (L.autoFin(C.auto, Date.now()) === 4 ? '<p class="note">' + T('auto.finalDone') + '</p>' : k ? '<p class="note">' + T('auto.finalNote') + '</p>' : '');
+      $('finBtn').addEventListener('click', function () { finalThree(); draw(); });
+      if ($('autoBack')) $('autoBack').addEventListener('click', function () { C.patterns = C.auto.pick.slice(); save(); draw(); changed(); });
+    }
     function draw() {
+      drawAuto();
       var host = $('pats'); host.innerHTML = '';
       PATS.forEach(function (p) {
         var both = L.hasClasico(C.patterns), lin = p.id === 'linea' && !both && L.lineaIn(C.patterns);
@@ -1273,7 +1318,7 @@ a.chip{text-decoration:none}
         // Which lines count, under Línea while it's the game. A change of lines redraws only the picker and Línea.
         if (lin) {
           var ln = document.createElement('div'); ln.className = 'lines'; host.appendChild(ln);
-          L.linePicker(ln, C.patterns, function (id, note) { if (note) { toast(note); return; } C.lines = id; save(); face(); changed(); });
+          L.linePicker(ln, C.patterns, function (id, note) { if (note) { toast(note); return; } C.lines = id; save(); face(); drawAuto(); changed(); });
         }
       });
     }
@@ -1314,6 +1359,7 @@ a.chip{text-decoration:none}
       '<label class="fld" id="rRow"><span>' + T('cantor.rate') + ' · <b id="rateV"></b></span><input type="range" id="rate" min="0.7" max="1.3" step="0.05"></label></div>' +
       '<div class="card"><div class="eyebrow">' + T('cantor.styleH') + '</div><div class="styles" id="styles"></div></div>' +
       '<div class="card"><div class="eyebrow">' + T('cantor.paceGroup') + '</div><div class="row" style="margin-top:8px"><div class="seg" id="paceSeg">' + ['slow', 'normal', 'fast'].map(paceOpt).join('') + '</div></div><p class="note" style="margin-top:8px">' + T('cantor.paceNote') + '</p></div>' +
+      '<div class="card" id="autoCard"></div>' +
       '<div class="card"><div class="eyebrow">' + T('cantor.shoutH') + '</div><div class="row" style="margin-top:8px"><div class="seg" id="chkSeg"><button type="button" data-v="trust">' + T('cantor.trust') + '</button><button type="button" data-v="check">' + T('cantor.check') + '</button></div></div><p class="note" style="margin-top:8px" id="chkNote"></p></div>' +
       '<div class="card" id="meCard"></div>' +
       '<div class="card" id="rulesCard"><div class="eyebrow">' + T('cantor.rulesH') + '</div><div class="rule"><b>' + T('cantor.twoH') + '</b><div class="styles" id="twoOpts"></div></div><div class="rule"><b>' + T('cantor.lateH') + '</b><div class="styles" id="lateOpts"></div></div></div>' +
@@ -1383,9 +1429,24 @@ a.chip{text-decoration:none}
       $('chkNote').textContent = T(st.check ? 'cantor.chk.on' : 'cantor.chk.off');
       onOff($('sndBtn'), st.sound);
       onOff($('awBtn'), st.awake);
+      autoCard();
       $('alongWhat').textContent = C.juego ? T('cantor.alongWhat', { game: L.gameName(C.patterns), juego: C.juego }) : T('cantor.alongWhatGame', { game: L.gameName(C.patterns) });
       if ($('fsBtn')) onOff($('fsBtn'), fsOn());
       winsCard(); meCard();
+    }
+    // El Cantor picks the game, and while it's on, Final three.
+    function autoCard() {
+      var el = $('autoCard'), k = finalK();
+      el.innerHTML = '<div class="row sp"><div><b>' + T('auto.h') + '</b><p class="note">' + T('auto.note') + '</p></div><button class="chip" type="button" id="autoBtn"></button></div>' +
+        (st.auto ? '<div class="row" style="margin-top:8px"><button type="button" class="chip' + (k ? ' on' : '') + '" id="finSet" aria-pressed="' + !!k + '">' + T('auto.final') + '</button></div><p class="note" style="margin-top:6px">' + esc((k ? T('auto.finalOn', { k: k }) + ' · ' : '') + T('auto.finalNote')) + '</p>' : '');
+      onOff($('autoBtn'), !!st.auto);
+      $('autoBtn').addEventListener('click', function () {
+        st.auto = !st.auto;
+        if (st.auto && !C.pos) autoApply(); // this round's game, picked now
+        if (!st.auto) { L.autoFinal(C.auto, false, Date.now()); C.auto.pick = []; }
+        save(); autoCard(); renderTop(); renderMine(); renderCaption();
+      });
+      if ($('finSet')) $('finSet').addEventListener('click', function () { finalThree(); autoCard(); });
     }
     function winsCard() {
       var el = $('winsCard'), w = C.wins;

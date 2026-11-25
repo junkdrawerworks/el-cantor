@@ -10,7 +10,7 @@
 // until FILES is changed to match (it says what to), which changes this file, so every copy is made whole again at once.
 const CACHE = 'el-cantor-v5'; // bump the number when the file list changes, or recorded clips change under the same name
 // (v4: Bandolón, Violoncello and the opening call recorded again; v5: Barril. A phone's copy of the old ones goes with it)
-const FILES = 'd3505cc8'; // test/e2e.mjs checks this
+const FILES = 'eec23739'; // test/e2e.mjs checks this
 const SHELL = [
   './', 'index.html', 'carry.js', 'strings.js', 'cantor.html', 'board.html', 'print.html', 'deck.js', 'sync.js',
   'icon.svg', 'icon-180.png', 'icon-192.png', 'manifest.webmanifest', 'audio/voices.json',

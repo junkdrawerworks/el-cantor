@@ -296,6 +296,134 @@ check('lines: check, closest, the fewest squares and when a tabla first won agre
   assert.ok(cases === 6000);
 });
 
+// ---------------------------------------------------------------- El Cantor picks the game
+// Nights simulated round by round: El Cantor picks, the round's first card is called (which counts its game), and the
+// round lasts 4 to 9 minutes. over(pick, k): the game the caller plays instead, or nothing to play the pick.
+function night(L, rnd, { start = 1.7e12, rounds = 22, over = null, finalAt = -1, a = L.autoGood(null) } = {}) {
+  let now = start; const out = [];
+  for (let k = 0; k < rounds; k++) {
+    if (k === finalAt) L.autoFinal(a, true, now); // Final three tapped before this round
+    const pick = plain(L.autoPick(a, now, rnd)), fin = a.fin, played = (over && over(pick, k)) || pick;
+    out.push({ k, now, pick, played, fin, since: a.t ? now - a.night : 0, cutoff: a.cutoff, first: !a.t || now - a.t >= L.NIGHT });
+    L.autoCard(a, now, rnd, played, 'r' + now);
+    now += (4 + 5 * rnd()) * 60e3;
+  }
+  return { rounds: out, a };
+}
+const kind = ids => ids.length === 3 && ['linea', 'esquinas', 'cuadro'].every(x => ids.includes(x)) ? 'clasico' : ids.join('+');
+
+check('auto: a night opens with 15 to 20 minutes of Clásico, never three others in a row, and Tabla Llena only in the final three', () => {
+  const L = loadDeck(), rnd = seeded(2026), counts = {};
+  let others = 0, cutoffs = [];
+  for (let n = 0; n < 400; n++) {
+    const { rounds, a } = night(L, rnd, { start: 1.7e12 + n * 86400e3 });
+    cutoffs.push(a.cutoff / 60e3);
+    let run = 0;
+    for (const r of rounds) {
+      const k = kind(r.pick);
+      // Before the night's first card and in its Clásico stretch: Clásico.
+      if (r.first || r.since < r.cutoff) assert.equal(k, 'clasico', 'not Clásico ' + (r.since / 60e3).toFixed(1) + ' minutes in, before ' + (r.cutoff / 60e3).toFixed(1));
+      assert.ok(!r.pick.includes('llena'), 'Tabla Llena outside the final three');
+      run = k === 'clasico' ? 0 : run + 1;
+      assert.ok(run <= 2, 'three games in a row that aren’t Clásico, round ' + r.k);
+      if (k !== 'clasico') { others++; counts[k] = (counts[k] || 0) + 1; }
+      assert.ok(L.pat(r.pick[0]), 'a pick that isn’t a game: ' + r.pick);
+    }
+  }
+  // The stretch is drawn between 15 and 20 minutes, once a night, and spreads across it.
+  assert.ok(cutoffs.every(m => m >= 15 && m <= 20), 'a Clásico stretch outside 15–20 minutes');
+  assert.ok(Math.min(...cutoffs) < 15.5 && Math.max(...cutoffs) > 19.5, 'the stretch isn’t drawn across 15–20 minutes');
+  // Siete Loco is the most common of the others, by far; the simpler shapes come before the rest; Línea's picks are its lines.
+  const ranked = Object.entries(counts).sort((x, y) => y[1] - x[1]);
+  assert.equal(ranked[0][0], 'siete', 'Siete Loco isn’t the most common: ' + JSON.stringify(ranked.slice(0, 4)));
+  assert.ok(ranked[0][1] > 2 * ranked[1][1], 'Siete Loco isn’t picked far more than the next: ' + JSON.stringify(ranked.slice(0, 3)));
+  assert.ok(others > 1500, others + ' rounds that weren’t Clásico');
+  const lines = Object.keys(counts).filter(k => k.startsWith('linea'));
+  assert.ok(lines.includes('linea-0') && lines.includes('linea'), 'Línea is never on the top line or any line: ' + lines);
+  assert.ok(lines.every(k => ['linea', 'linea-0', 'linea-3', 'linea-4', 'linea-7'].includes(k)), 'Línea on lines it doesn’t pick: ' + lines);
+});
+
+check('auto: the chance of something other than Clásico starts low and grows over the next hour, the harder shapes later', () => {
+  const L = loadDeck(), rnd = seeded(7);
+  assert.ok(L.autoChance(0) <= 0.15, 'starts at ' + L.autoChance(0));
+  assert.ok(L.autoChance(30) > L.autoChance(0) && L.autoChance(60) > L.autoChance(30), 'doesn’t grow');
+  assert.ok(L.autoChance(75) >= 0.5 && L.autoChance(240) <= 0.6, 'ends at ' + L.autoChance(240));
+  // Straight after the stretch, and an hour and a half past it: how often, and which shapes.
+  const at = (m, n = 20000) => {
+    const out = { other: 0, later: 0, easy: 0 };
+    for (let i = 0; i < n; i++) {
+      const a = L.autoGood({ night: 1e12, t: 1e12 + 1, cutoff: 15 * 60e3, recent: [1, 1] });
+      const pick = plain(L.autoPick(a, 1e12 + (15 + m) * 60e3, rnd)), p = pick[0];
+      if (kind(pick) === 'clasico') continue;
+      out.other++;
+      if (['ele', 'equis', 'marco', 'rieles', 'escalera'].includes(p)) out.later++;
+      else if (p !== 'siete') out.easy++;
+    }
+    return out;
+  };
+  const early = at(1), late = at(90);
+  assert.ok(early.other / 20000 < 0.13, 'straight after the stretch: ' + early.other);
+  assert.ok(late.other / 20000 > 0.45, 'an hour and a half in: ' + late.other);
+  assert.ok(early.later / early.other < 0.03, 'the harder shapes come straight away: ' + early.later + ' of ' + early.other);
+  assert.ok(late.later > late.easy * 0.5, 'the harder shapes never come in: ' + late.later + ' to ' + late.easy);
+});
+
+check('auto: the final three is Siete Loco, La Equis, Tabla Llena whatever came before, then picks go on as before', () => {
+  const L = loadDeck(), rnd = seeded(33);
+  for (let n = 0; n < 200; n++) {
+    // Tapped at any round of the night, even after two others in a row.
+    const at = 2 + (n % 15), { rounds, a } = night(L, rnd, { start: 1.8e12 + n * 86400e3, rounds: at + 6, finalAt: at, over: (p, k) => k === at - 1 || k === at - 2 ? ['marco'] : null });
+    assert.deepEqual(rounds.slice(at, at + 3).map(r => r.pick), [['siete'], ['equis'], ['llena']], 'the final three, from round ' + at);
+    assert.deepEqual(rounds.slice(at, at + 3).map(r => r.fin), [1, 2, 3]);
+    assert.equal(rounds[at + 3].fin, 4, 'the final three isn’t over after the third');
+    assert.equal(kind(rounds[at + 3].pick), 'clasico', 'after La Equis and Tabla Llena, the next is Clásico');
+    assert.equal(rounds[at + 4].fin, 0, 'picks don’t go back to the usual rules');
+    assert.ok(rounds.slice(at + 3).every(r => !r.pick.includes('llena')), 'Tabla Llena after the final three');
+    assert.equal(a.fin, 0);
+  }
+  // The caller can still play something else in the final three: it counts as that final round.
+  const { rounds } = night(L, rnd, { rounds: 8, finalAt: 3, over: (p, k) => k === 4 ? ['centro'] : null });
+  assert.deepEqual(rounds.slice(3, 6).map(r => r.pick), [['siete'], ['equis'], ['llena']]);
+  assert.deepEqual(rounds[4].played, ['centro']);
+});
+
+check('auto: a game the caller picks instead counts in the run of others, and six hours with no card starts a new night', () => {
+  const L = loadDeck(), rnd = seeded(5);
+  for (let n = 0; n < 300; n++) {
+    // Late in the night, two rounds the caller played as something else, whatever was picked: the third is Clásico.
+    const a = L.autoGood(null), start = 1.9e12 + n * 86400e3;
+    L.autoCard(a, start, rnd, ['linea', 'esquinas', 'cuadro'], 'first');
+    const late = start + 120 * 60e3;
+    L.autoCard(a, late, rnd, ['esquinas'], 'x1');
+    L.autoCard(a, late + 5 * 60e3, rnd, ['linea-0'], 'x2');
+    assert.equal(kind(plain(L.autoPick(a, late + 10 * 60e3, rnd))), 'clasico', 'a third in a row that isn’t Clásico');
+    // A round counts once, however many of its cards are called.
+    L.autoCard(a, late + 10 * 60e3, rnd, ['linea', 'esquinas', 'cuadro'], 'x3');
+    L.autoCard(a, late + 11 * 60e3, rnd, null, 'x3');
+    L.autoCard(a, late + 12 * 60e3, rnd, ['linea', 'esquinas', 'cuadro'], 'x3');
+    assert.deepEqual(plain(a.recent), [0, 0, 1]);
+    // Six hours later: a new night, Clásico again, its own stretch.
+    const next = late + 12 * 60e3 + L.NIGHT;
+    assert.equal(kind(plain(L.autoPick(a, next, rnd))), 'clasico');
+    L.autoCard(a, next, rnd, ['linea', 'esquinas', 'cuadro'], 'y1');
+    assert.equal(a.night, next);
+    assert.deepEqual(plain(a.recent), [1]);
+  }
+  // A damaged save of the state starts clean.
+  assert.deepEqual(plain(L.autoGood({ night: 'x', t: -1, recent: [0, 'a', 1, 2], fin: 7, pick: ['nope', 'siete'] })), { night: 0, t: 0, cutoff: 0, recent: [0, 1], fin: 0, finAt: 0, rid: '', pick: ['siete'] });
+  // Final three tapped before a night's first card stays on; one left from the last night is over.
+  const b = L.autoGood(null), t0 = 2e12;
+  L.autoFinal(b, true, t0);
+  assert.deepEqual(plain(L.autoPick(b, t0, rnd)), ['siete']);
+  L.autoCard(b, t0 + 1000, rnd, ['siete'], 'f1');
+  assert.equal(b.fin, 2, 'the first card of the night undid Final three');
+  const t1 = t0 + 1000 + L.NIGHT;
+  assert.equal(kind(plain(L.autoPick(b, t1, rnd))), 'clasico', 'a final three left from the last night carries on into the next');
+  assert.equal(L.autoFin(b, t1), 0);
+  L.autoCard(b, t1, rnd, ['linea', 'esquinas', 'cuadro'], 'n1');
+  assert.equal(b.fin, 0, 'a final three left from the last night carries on');
+});
+
 // ---------------------------------------------------------------- random tablas
 check('random: My tablas’ Random tabla deals 16 different cards; Make tablas’ Random makes one like Mark’s four, and Fill the rest keeps what’s there', () => {
   const L = loadDeck(), CARDS = L.CARDS, board = read('board.html'), print = read('print.html');

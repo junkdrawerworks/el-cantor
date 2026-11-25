@@ -316,6 +316,58 @@
   var WORDS = ['CANELA', 'CAJETA', 'ELOTE', 'TAMAL', 'ATOLE', 'POZOLE', 'MANGO', 'PAPAYA', 'JICAMA', 'GUAYABA', 'LIMON', 'NIEVE', 'CHURRO', 'CONCHA', 'PAMBAZO', 'TEJOCOTE', 'COMAL', 'MOLCAJETE', 'PIPIAN', 'HORCHATA', 'TAMARINDO', 'CHAYOTE', 'CAPIROTADA', 'BUNUELO'];
   function randomJuego(not) { var w; do { w = WORDS[Math.floor(Math.random() * WORDS.length)]; } while (w === not); return w; }
 
+  // ---------- El Cantor picks the game ----------
+  // With Settings' El Cantor picks the game on, El Cantor chooses each round's game the way Mark's family plays a night.
+  // The night starts at its first card (six hours with no card starts a new one, as for Who's winning tonight), and its
+  // first 15 to 20 minutes, drawn once a night, are all Clásico. After that a round is something else now and then: a
+  // one-in-ten chance at first, growing to more than one in two over the next hour and a quarter. Siete Loco, the
+  // family's go-to, is four in ten of those; the rest are the simpler shapes (Esquinas, Centro, Cuadrito, Línea and its
+  // lines), with the others (La Ele, La Equis, El Marco, Rieles, Escalera) coming in over the first hour and a half.
+  // Never three in a row that aren't Clásico. Tabla Llena only in the final three: Siete Loco, La Equis, Tabla Llena,
+  // started by a tap, whatever came before. The game actually played counts, whoever picked it.
+  // The state, kept on the device: { night: its first card's time, t: the last card's, cutoff: the Clásico stretch in ms,
+  // recent: the last rounds, 1 for Clásico and 0 for anything else, fin: 0, or 1–3 for the final round coming next, or 4
+  // once the third has started, finAt: when Final three was tapped, rid: the round counted last, pick: the game picked
+  // for this round }.
+  var NIGHT = 6 * 3600e3, AUTO_EASY = ['esquinas', 'centro', 'cuadro', 'linea'], AUTO_LATER = ['ele', 'equis', 'marco', 'rieles', 'escalera'], FINAL = ['siete', 'equis', 'llena'];
+  var AUTO_LINES = [['linea-0', 4], ['linea', 3], ['linea-3', 1], ['linea-4', 1], ['linea-7', 1]]; // the top line most, as they like it
+  function autoGood(a) {
+    a = a && typeof a === 'object' ? a : {};
+    var num = function (x) { return typeof x === 'number' && isFinite(x) && x > 0 ? x : 0; };
+    return { night: num(a.night), t: num(a.t), cutoff: num(a.cutoff), recent: (Array.isArray(a.recent) ? a.recent : []).filter(function (x) { return x === 0 || x === 1; }).slice(-3),
+      fin: [1, 2, 3, 4].indexOf(a.fin) >= 0 ? a.fin : 0, finAt: num(a.finAt), rid: typeof a.rid === 'string' ? a.rid : '', pick: (Array.isArray(a.pick) ? a.pick : []).filter(function (id) { return typeof id === 'string' && pat(id); }) };
+  }
+  function autoNight(a, now) { return !a.t || now - a.t >= NIGHT; } // no card yet tonight
+  // A card called at now. ids and rid for a round's first card: its game, counted once for the round rid.
+  function autoCard(a, now, rnd, ids, rid) {
+    if (autoNight(a, now)) { a.night = now; a.cutoff = Math.round((15 + 5 * rnd()) * 60e3); a.recent = []; if (!(a.finAt > a.t)) a.fin = 0; } // a final three left from the last night is over, not one tapped since
+    a.t = now;
+    if (ids && rid !== a.rid) {
+      a.rid = rid; a.recent = a.recent.concat(isClasico(ids) ? 1 : 0).slice(-3);
+      a.fin = a.fin >= 1 && a.fin <= 3 ? a.fin + 1 : 0;
+    }
+  }
+  // Final three tapped at now: on, the next three rounds are its games; off, the usual picks.
+  function autoFinal(a, on, now) { a.fin = on ? 1 : 0; a.finAt = now; }
+  // Where the final three is at now: fin, or 0 for one left from a night that's over (six hours with no card since).
+  function autoFin(a, now) { return autoNight(a, now) && a.t && !(a.finAt > a.t) ? 0 : a.fin; }
+  // The chance a round past the Clásico stretch is something else, m minutes past it.
+  function autoChance(m) { return 0.1 + 0.45 * Math.min(1, Math.max(0, m) / 75); }
+  function weighted(list, rnd) { var tot = 0, i; for (i = 0; i < list.length; i++) tot += list[i][1]; var x = rnd() * tot; for (i = 0; i < list.length; i++) { x -= list[i][1]; if (x < 0) return list[i][0]; } return list[list.length - 1][0]; }
+  // The game for the next round, at now.
+  function autoPick(a, now, rnd) {
+    var fin = autoFin(a, now);
+    if (fin >= 1 && fin <= 3) return [FINAL[fin - 1]];
+    if (autoNight(a, now) || now - a.night < a.cutoff) return CLASICO.slice();
+    var run = 0; for (var i = a.recent.length - 1; i >= 0 && !a.recent[i]; i--) run++;
+    if (run >= 2) return CLASICO.slice();
+    var m = (now - a.night - a.cutoff) / 60e3;
+    if (rnd() >= autoChance(m)) return CLASICO.slice();
+    if (rnd() < 0.4) return ['siete'];
+    var later = 0.7 * Math.min(1, m / 90), id = weighted(AUTO_EASY.map(function (x) { return [x, 1]; }).concat(AUTO_LATER.map(function (x) { return [x, later]; })), rnd);
+    return [id === 'linea' ? weighted(AUTO_LINES, rnd) : id];
+  }
+
   // ---------- the line picker ----------
   // Under Línea in a game picker, while the game is Línea: which lines count. Any line (the start), the top, bottom,
   // left or right line in one tap, or any set of the ten tapped in and out on a little tabla: a handle at the start of
@@ -355,6 +407,7 @@
   window.Loteria = {
     CARDS: CARDS, BYFILE: BYFILE, card: card, src: src, fold: fold, findCards: findCards, originals: originals,
     PATS: PATS, CLASICO: CLASICO, ALL: ALL, pat: pat, patSub: patSub, LINES: LINES, lineId: lineId, linesOf: linesOf, isLinea: isLinea, lineaIn: lineaIn, linePicker: linePicker, isClasico: isClasico, hasClasico: hasClasico, gameName: gameName, holdShape: holdShape, squaresNeeded: squaresNeeded, check: check, closest: closest, defaultPaper: defaultPaper, confetti: confetti,
+    autoGood: autoGood, autoNight: autoNight, autoCard: autoCard, autoFinal: autoFinal, autoFin: autoFin, autoChance: autoChance, autoPick: autoPick, FINAL: FINAL, NIGHT: NIGHT,
     juegoName: juegoName, juego: juego, juegoTabla: juegoTabla, randomJuego: randomJuego
   };
 })();

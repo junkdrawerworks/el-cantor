@@ -2081,6 +2081,84 @@ check('games: Línea on the lines chosen, from the picker to the game chip, the 
   } finally { await ctx.close(); }
 });
 
+check('cantor: El Cantor picks the game: the switch, the pick over Ready and in the round’s picker, another game instead, and Final three', async () => {
+  const ctx = await context(PHONE);
+  try {
+    const page = await ctx.newPage(), problems = watch(page);
+    await seed(page, { 'loteria.cantor': { order: run(1, 54), pos: 0, round: 1, patterns: ['equis'], juego: '', wins: [], settings: { speak: false, sound: false, awake: false, check: false } } });
+    await page.goto(base + 'cantor.html');
+    const top = () => page.textContent('#cap .gm small'), game = async () => (await saved(page, 'loteria.cantor')).patterns;
+    const box = () => page.evaluate(() => { const b = document.getElementById('autoPk'); return b ? [b.querySelector('.eyebrow').textContent, b.querySelector('b').textContent] : null; });
+    assert.equal(await top(), 'Round 1 · We’re playing');
+    // Off to start with. On, before the night's first card: Clásico, said to be El Cantor's pick.
+    await page.click('#setBtn');
+    assert.equal(await page.textContent('#autoBtn'), 'Off');
+    assert.equal(await page.locator('#finSet').count(), 0, 'Final three with the switch off');
+    await page.click('#autoBtn');
+    assert.equal(await page.textContent('#autoBtn'), 'On');
+    assert.ok(await page.isVisible('#finSet'));
+    await page.click('#stx');
+    assert.deepEqual(await game(), ['linea', 'esquinas', 'cuadro']);
+    assert.equal(await top(), 'Round 1 · El Cantor’s pick');
+    // The picker shows the pick at the top. Final three: Siete Loco now.
+    await page.click('#patBtn');
+    assert.deepEqual(await box(), ['El Cantor’s pick', 'Clásico']);
+    await page.click('#finBtn');
+    assert.equal(await page.textContent('#toast'), 'Final three: Siete Loco, La Equis, then Tabla Llena');
+    assert.deepEqual(await game(), ['siete']);
+    assert.deepEqual(await box(), ['Final three · 1 of 3', 'Siete Loco']);
+    // Another game instead: it says so, with a way back; then the other game again, and Done.
+    await page.locator('#pats .pat', { hasText: 'Centro' }).click();
+    assert.deepEqual(await game(), ['centro']);
+    assert.match(await page.textContent('#autoPk'), /You picked Centro instead\./);
+    await page.click('#autoBack');
+    assert.deepEqual(await game(), ['siete']);
+    await page.locator('#pats .pat', { hasText: 'Centro' }).click();
+    await page.click('#ptx');
+    assert.equal(await top(), 'Round 1 · We’re playing');
+    // Each round won, the next one's picker opens on the next of the final three; Centro counted as the first.
+    const round = async who => { await page.click('#nextBtn'); await page.click('#lotBtn'); await page.fill('#clWho', who); await page.click('#clNew'); await until(page, () => !document.getElementById('sheet').hidden); };
+    await round('Abuela');
+    assert.equal(await sheetTitle(page), 'Round 2 — what are we playing?');
+    assert.deepEqual(await box(), ['Final three · 2 of 3', 'La Equis']);
+    assert.deepEqual(await game(), ['equis']);
+    await page.click('#ptx');
+    assert.equal(await top(), 'Round 2 · Final three, 2 of 3');
+    await round('Mark');
+    assert.deepEqual(await box(), ['Final three · 3 of 3', 'Tabla Llena']);
+    await page.click('#ptx');
+    await round('Beto');
+    // After the third it says the final three is done, and picks the usual way: after three others, Clásico.
+    assert.deepEqual(await box(), ['El Cantor’s pick', 'Clásico']);
+    assert.match(await page.textContent('#autoPk'), /That was the final three\. Keep playing, and El Cantor picks the usual way\./);
+    assert.deepEqual(await game(), ['linea', 'esquinas', 'cuadro']);
+    await page.click('#ptx');
+    const st = await saved(page, 'loteria.cantor');
+    assert.deepEqual(st.wins.map(w => [w.round, w.who, w.how]), [[1, 'Abuela', 'Centro'], [2, 'Mark', 'La Equis'], [3, 'Beto', 'Tabla Llena']]);
+    assert.deepEqual([st.auto.fin, st.auto.recent], [4, [0, 0, 0]]);
+    assert.ok(st.auto.night > 0 && st.auto.cutoff >= 15 * 60e3 && st.auto.cutoff <= 20 * 60e3, 'the night’s Clásico stretch');
+    // Kept through a reload, on this device.
+    await page.reload();
+    assert.equal(await top(), 'Round 4 · El Cantor’s pick');
+    // Final three from Settings, mid-round: the next round is Siete Loco.
+    await page.click('#nextBtn');
+    await page.click('#setBtn'); await page.click('#finSet');
+    assert.match(await page.textContent('#autoCard'), /Final three · 1 of 3/);
+    await page.click('#stx');
+    assert.deepEqual(await game(), ['linea', 'esquinas', 'cuadro'], 'Final three changed the round under way');
+    await round('Ana');
+    assert.deepEqual(await box(), ['Final three · 1 of 3', 'Siete Loco']);
+    await page.click('#ptx');
+    // Off: the game stays, nothing is said to be El Cantor's, and Final three goes.
+    await page.click('#setBtn'); await page.click('#autoBtn'); await page.click('#stx');
+    assert.equal(await top(), 'Round 5 · We’re playing');
+    assert.deepEqual((await saved(page, 'loteria.cantor')).auto.fin, 0);
+    await page.click('#patBtn');
+    assert.equal(await box(), null, 'El Cantor’s pick with the switch off');
+    assert.deepEqual(problems, []);
+  } finally { await ctx.close(); }
+});
+
 check('cantor: Our tablas checks Mark’s four and Make tablas’ own in one tap, with a printed tabla’s verdict, and the tally keeps its name', async () => {
   // Mark's Tabla 3 has El Gallo, El Nopal, El Diablito and La Mano across its top row: those four have just been called.
   const TOP3 = [1, 39, 2, 21], ABUELA = [1, 39, 2, 22, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16];
