@@ -8,12 +8,12 @@
 // refreshed only when a page that loads it is visited online, and the copy could mix two releases. So FILES is a
 // fingerprint of every file in SHELL and CARDS: change any of them, a card picture included, and test/e2e.mjs fails
 // until FILES is changed to match (it says what to), which changes this file, so every copy is made whole again at once.
-const CACHE = 'el-cantor-v5'; // bump the number when the file list changes, or recorded clips change under the same name
-// (v4: Bandolón, Violoncello and the opening call recorded again; v5: Barril. A phone's copy of the old ones goes with it)
-const FILES = 'c94cf63d'; // test/e2e.mjs checks this
+const CACHE = 'el-cantor-v6'; // bump the number when the file list changes, or recorded clips change under the same name
+// (v4: Bandolón, Violoncello and the opening call recorded again; v5: Barril; v6: Shuffle's sound. A phone's copy of the old ones goes with it)
+const FILES = '871f0bb4'; // test/e2e.mjs checks this
 const SHELL = [
   './', 'index.html', 'carry.js', 'strings.js', 'cantor.html', 'board.html', 'print.html', 'deck.js', 'sync.js',
-  'icon.svg', 'icon-180.png', 'icon-192.png', 'manifest.webmanifest', 'audio/voices.json',
+  'icon.svg', 'icon-180.png', 'icon-192.png', 'manifest.webmanifest', 'audio/voices.json', 'audio/shuffle.mp3',
   'fonts/fonts.css', 'fonts/bree-serif-latin.woff2', 'fonts/bree-serif-latin-ext.woff2', 'fonts/nunito-sans-latin.woff2',
   'fonts/nunito-sans-latin-ext.woff2', 'fonts/nunito-sans-italic-latin.woff2', 'fonts/nunito-sans-italic-latin-ext.woff2',
 ];

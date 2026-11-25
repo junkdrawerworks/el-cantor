@@ -1064,8 +1064,9 @@ check('cantor: Shuffle puts the cards still to come in a new order, with the rif
     try {
       const page = await ctx.newPage(), problems = watch(page);
       await page.addInitScript(DEALS);
-      // Counts the sounds made: the riffle is a run of short noises.
-      await page.addInitScript(() => { window.__sources = 0; const A = window.AudioContext; if (A) { const f = A.prototype.createBufferSource; A.prototype.createBufferSource = function () { window.__sources++; return f.call(this); }; const o = A.prototype.createOscillator; A.prototype.createOscillator = function () { window.__beeps = (window.__beeps || 0) + 1; return o.call(this); }; } });
+      // The sounds started, by length: the riffle is a recording three quarters of a second long.
+      await page.addInitScript(() => { window.__played = []; const S = window.AudioBufferSourceNode; if (S) { const st = S.prototype.start; S.prototype.start = function (...a) { window.__played.push(this.buffer ? this.buffer.duration : 0); return st.apply(this, a); }; } const A = window.AudioContext; if (A) { const o = A.prototype.createOscillator; A.prototype.createOscillator = function () { window.__beeps = (window.__beeps || 0) + 1; return o.call(this); }; } });
+      const riffled = () => until(page, () => window.__played.some(d => d > 0.6 && d < 1), null, 5000).then(() => true, () => false);
       const order = run(1, 54);
       await seed(page, { 'loteria.cantor': { order, pos: 0, round: 1, patterns: ['linea', 'esquinas', 'cuadro'], juego: '', wins: [], last: Date.now(), settings: { speak: false, style: 'name', voice: '', rate: 1, pace: 'slow', sound: true, awake: false, check: false } } });
       await page.goto(base + 'cantor.html');
@@ -1083,7 +1084,7 @@ check('cantor: Shuffle puts the cards still to come in a new order, with the rif
       assert.notDeepEqual(st.order, order, 'the deck wasn’t shuffled');
       assert.equal(await page.textContent('#toast'), 'Shuffled the 54 cards still to come');
       assert.ok(await page.evaluate(() => document.getElementById('app').classList.contains('shuffling')), 'no riffle');
-      assert.ok(await page.evaluate(() => window.__sources >= 20), 'no riffle sound');
+      assert.ok(await riffled(), 'no riffle sound');
       assert.equal(await page.evaluate(() => window.__beeps || 0), 0, 'the riffle beeps');
       await until(page, () => !document.getElementById('app').classList.contains('shuffling'), null, 3000);
       const names = await page.evaluate(() => Loteria.CARDS.map(c => c.name)), first = st.order;
@@ -1093,7 +1094,7 @@ check('cantor: Shuffle puts the cards still to come in a new order, with the rif
       // Mid-round, while it counts to the next card: the called cards stay, the rest change, and it keeps counting.
       await until(page, () => /^Next card in/.test(document.getElementById('stat').textContent));
       const before = await saved(page, 'loteria.cantor'), sab = await page.textContent('#sabCount');
-      await page.evaluate(() => { window.__sources = 0; });
+      await page.evaluate(() => { window.__played = []; });
       await page.click(btn);
       st = await saved(page, 'loteria.cantor');
       assert.deepEqual(st.order.slice(0, st.pos), before.order.slice(0, before.pos), 'a called card moved');
@@ -1102,19 +1103,32 @@ check('cantor: Shuffle puts the cards still to come in a new order, with the rif
       assert.equal(await page.textContent('#toast'), 'Shuffled the 53 cards still to come');
       assert.equal(await page.textContent('#sabCount'), sab);
       assert.match(await page.textContent('#stat'), /^Next card in/, 'Shuffle stopped the count');
-      assert.ok(await page.evaluate(() => window.__sources >= 20), 'no riffle sound mid-round');
+      assert.ok(await riffled(), 'no riffle sound mid-round');
       await until(page, () => window.__dealt.length === 2, null, 10000);
       assert.equal(await page.evaluate(() => window.__dealt[1].name), names[st.order[1] - 1], 'the next card isn’t from the new order');
       // Paused, it stays paused; with the sounds off, it riffles quietly; S on the keyboard does it too.
       await page.click('#playBtn');
       await until(page, () => document.getElementById('stat').textContent === 'Paused');
       await page.click('#setBtn'); await page.click('#sndBtn'); await page.click('#stx');
-      await page.evaluate(() => { window.__sources = 0; });
+      await page.evaluate(() => { window.__played = []; });
       const o2 = (await saved(page, 'loteria.cantor')).order;
       if (kind === DESKTOP) await page.keyboard.press('s'); else await page.click(btn);
       assert.notDeepEqual((await saved(page, 'loteria.cantor')).order, o2);
       assert.equal(await page.textContent('#stat'), 'Paused');
-      assert.equal(await page.evaluate(() => window.__sources), 0, 'a sound with the sounds off');
+      await page.waitForTimeout(300);
+      assert.deepEqual(await page.evaluate(() => window.__played), [], 'a sound with the sounds off');
+      // With no recording to be had, a stand-in made of noise, still no beeps.
+      if (kind === DESKTOP) {
+        await page.route('**/audio/shuffle.mp3', r => r.abort());
+        await page.reload();
+        await page.click('#setBtn'); await page.click('#sndBtn'); await page.click('#stx');
+        await page.evaluate(() => { window.__played = []; });
+        await page.click(btn);
+        assert.ok(await page.evaluate(() => window.__played.length >= 20 && window.__played.every(d => d < 0.05)), 'no stand-in riffle without the recording');
+        assert.equal(await page.evaluate(() => window.__beeps || 0), 0);
+        await page.unroute('**/audio/shuffle.mp3');
+        problems.splice(0, problems.length, ...problems.filter(p => p !== 'console: Failed to load resource: net::ERR_FAILED')); // the recording blocked on purpose
+      }
       // One card left or none: nothing to shuffle.
       await page.evaluate(() => { const s = JSON.parse(localStorage.getItem('loteria.cantor')); s.pos = 53; localStorage.setItem('loteria.cantor', JSON.stringify(s)); });
       await page.reload();

@@ -654,12 +654,24 @@ a.chip{text-decoration:none}
     s.buffer = buf; f.type = 'bandpass'; f.frequency.value = 2600; f.Q.value = 0.7; g.gain.value = 0.5;
     s.connect(f); f.connect(g); g.connect(a.destination); s.start();
   }
-  // Shuffle's sound: a deck riffled, then bridged. A riffle is about fifty cards flapping off the thumbs in two thirds
-  // of a second, so it's fifty quick soft flaps of noise, each its own pitch in the middle of the range and with no
-  // hard edge, at uneven gaps that slow a little at the end; then the bridge, a faster, quieter cascade as the cards
-  // fall back together. No low rumble (it sounds like an engine) and no ringing high tick (a card in a bicycle wheel).
+  // Shuffle's sound: a real deck riffled, audio/shuffle.mp3 (Kenney's Casino Audio, card-fan-1, CC0), fetched when the
+  // page opens (6 KB, and kept offline by sw.js) and decoded the first time it's needed. Where it can't be had, a
+  // stand-in made here: fifty quick soft flaps of noise in the middle of the range, then a quieter cascade for the
+  // bridge, with no low rumble and no ringing high tick.
+  var SHUF = { bytes: null, buf: null };
+  if (window.fetch) fetch('audio/shuffle.mp3').then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.arrayBuffer(); }).then(function (b) { SHUF.bytes = b; }).catch(function () { });
   function riffleSound() {
     var a = ac(); if (!a) return;
+    function play(buf) { var s = a.createBufferSource(), g = a.createGain(); s.buffer = buf; g.gain.value = 0.9; s.connect(g); g.connect(a.destination); s.start(); }
+    if (SHUF.buf) { play(SHUF.buf); return; }
+    if (SHUF.bytes) {
+      var b = SHUF.bytes; SHUF.bytes = null; // decoding takes the bytes
+      new Promise(function (ok, bad) { var q = a.decodeAudioData(b, ok, bad); if (q && q.then) q.then(ok, bad); }).then(function (buf) { SHUF.buf = buf; play(buf); }, function () { riffleMade(a); });
+      return;
+    }
+    riffleMade(a);
+  }
+  function riffleMade(a) {
     var sr = a.sampleRate, i;
     // Everything through a gentle band, 500 Hz to 5 kHz.
     var hp = a.createBiquadFilter(), lp = a.createBiquadFilter(), out = a.createGain();
