@@ -100,6 +100,11 @@ a.chip{text-decoration:none}
 .app.opening .flip .inner.down{animation:riffle .45s ease-in-out 2}
 @keyframes riffle{0%,100%{transform:rotateY(180deg)}30%{transform:translateY(-6px) rotateY(180deg) rotateZ(-2.5deg)}70%{transform:translateY(-3px) rotateY(180deg) rotateZ(2.5deg)}}
 .app.opening .picado .fl{animation-duration:1.1s}
+/* Shuffle: the same riffle, on the deck before the first card and on the card showing after it */
+.app.shuffling .flip .inner.down{animation:riffle .45s ease-in-out 2}
+.app.shuffling .flip .inner:not(.down){animation:riffleUp .45s ease-in-out 2}
+@keyframes riffleUp{0%,100%{transform:none}30%{transform:translateY(-6px) rotateZ(-2.5deg)}70%{transform:translateY(-3px) rotateZ(2.5deg)}}
+.app.shuffling .picado .fl{animation-duration:1.1s}
 .face{position:absolute;inset:0;backface-visibility:hidden;-webkit-backface-visibility:hidden;border-radius:calc(var(--cw,220px)*.04);overflow:hidden;box-shadow:var(--lift);background:#FBF4E4} /* the card's own paper, in both themes */
 .face.front img{width:100%;height:100%;object-fit:cover;display:block}
 .face.back{transform:rotateY(180deg)}
@@ -222,6 +227,12 @@ a.chip{text-decoration:none}
 .stat{flex:1;min-width:0;font:700 13px var(--body);color:var(--ink2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-variant-numeric:tabular-nums}
 .lotb{flex:none;height:54px;border-radius:14px;border:0;background:var(--red);color:var(--red-ink);font:400 24px/1 var(--disp);padding:0 22px;box-shadow:var(--shadow);letter-spacing:.01em}
 .bar .seg{flex:none}
+/* Shuffle: beside Next card where the bar has room; on a phone held upright, whose bar is full, an icon at the top */
+.shufb{flex:none;height:46px;border-radius:999px;padding:0 16px 0 13px;background:var(--paper);border:1px solid var(--line2);font:800 14.5px var(--body);display:flex;align-items:center;gap:7px;color:var(--ink)}
+.shufb svg{width:20px;height:20px;display:block}
+.shufb:disabled,.shuft:disabled{opacity:.4}
+.shuft{display:none}
+.app.side .shufb{width:46px;padding:0;justify-content:center}.app.side .shufb span{display:none} /* a phone on its side: round, as ↶ is */
 .pacec{flex:none;height:46px;border-radius:999px;padding:0 12px 0 10px;background:var(--paper);border:1px solid var(--line2);font:800 14px var(--body);color:var(--ink);display:none;align-items:center;gap:5px;font-variant-numeric:tabular-nums}
 .pacec svg{width:18px;height:18px;display:block;color:var(--ink2)}
 /* shared bits */
@@ -417,7 +428,7 @@ a.chip{text-decoration:none}
 .linkb{background:none;border:0;padding:6px;margin-top:10px;color:var(--teal);font:700 13px var(--body);text-decoration:underline;text-underline-offset:3px}
 .toast{position:fixed;left:50%;width:max-content;bottom:calc(96px + var(--sab));transform:translateX(-50%) translateY(20px);background:var(--ink);color:var(--bg);padding:8px 14px;border-radius:10px;font:700 13px var(--body);opacity:0;transition:.2s;pointer-events:none;z-index:80;max-width:90vw;text-align:center}
 .toast.show{opacity:1;transform:translateX(-50%)}
-@media (max-width:700px){.bar .seg{display:none}.pacec{display:inline-flex}.lotb{margin-left:auto}}
+@media (max-width:700px){.bar .seg{display:none}.pacec{display:inline-flex}.lotb{margin-left:auto}.shufb{display:none}.shuft{display:inline-flex}}
 @media (max-width:560px){
   .top h1 small{display:none}.top h1{font-size:21px}
   .chip.lb{width:34px;height:34px;padding:0;justify-content:center}.chip.lb span{display:none}.chip.lb svg{width:17px;height:17px}
@@ -444,7 +455,7 @@ a.chip{text-decoration:none}
   .seg{overflow:visible}.seg button:first-child{border-radius:999px 0 0 999px}.seg button:last-child{border-radius:0 999px 999px 0} /* the round ends, without clipping the taps */
   .vfwin .chips{padding-top:7px;padding-bottom:7px;margin-top:-7px;margin-bottom:-7px} /* the past winners' row scrolls sideways: room in it for their taps, so it doesn't scroll up and down too */
 }
-@media (prefers-reduced-motion:reduce){.picado .fl,.flip .inner.turn,.app.opening .flip .inner.down,.winc,.playb.talk .ring .pr{animation:none}.toast,.sb img{transition:none}}
+@media (prefers-reduced-motion:reduce){.picado .fl,.flip .inner.turn,.app.opening .flip .inner.down,.app.shuffling .flip .inner,.winc,.playb.talk .ring .pr{animation:none}.toast,.sb img{transition:none}}
 .noscript{position:fixed;inset:0;z-index:100;margin:0;display:flex;flex-direction:column;gap:14px;align-items:center;justify-content:center;padding:16px;text-align:center;font:400 22px/1.3 var(--disp);color:var(--ink);background:var(--bg)}
 </style>
 </head>
@@ -455,6 +466,7 @@ a.chip{text-decoration:none}
   <div class="top">
     <a class="chip ic home" href="./" aria-label="Home — all the Lotería tools" title="Home" data-t-aria="home.aria" data-t-title="home.title"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 11.5 12 5l8 6.5"/><path d="M6.5 10v9h11v-9"/></svg></a>
     <h1><span class="t">El Cantor</span> <small id="sub"></small></h1>
+    <button class="chip ic shuft" id="shufTop" type="button" aria-label="Shuffle the cards still to come" title="Shuffle the cards still to come" data-t-aria="cantor.shuffleTitle" data-t-title="cantor.shuffleTitle"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 7h3.2c2 0 3.2.9 4.2 2.6l2.2 4.8c1 1.7 2.2 2.6 4.2 2.6h3"/><path d="M3.5 17h3.2c1.3 0 2.3-.4 3.1-1.2M13.9 8.2c.8-.8 1.8-1.2 3.1-1.2h3"/><path d="M17.5 4.5 20 7l-2.5 2.5M17.5 14.5 20 17l-2.5 2.5"/></svg></button>
     <button class="chip" id="patBtn" type="button">Clásico</button>
     <button class="chip lb" id="sabBtn" type="button" aria-label="Sábana" title="Sábana — every card, called or not" data-t-title="cantor.sabanaTitle"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M4 4h4v6H4zM10 4h4v6h-4zM16 4h4v6h-4zM4 14h4v6H4zM10 14h4v6h-4zM16 14h4v6h-4z"/></svg><span>Sábana</span></button>
     <button class="chip lb" id="printBtn" type="button" aria-label="Print tablas" title="Print tablas" data-t-aria="printTablas" data-t-title="printTablas"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M7 9V3h10v6M7 17H4v-7a1 1 0 0 1 1-1h14a1 1 0 0 1 1 1v7h-3"/><path d="M7 14h10v7H7z"/></svg><span data-t="printTablas">Print tablas</span></button>
@@ -486,6 +498,7 @@ a.chip{text-decoration:none}
     <button class="cbtn" id="backBtn" type="button" aria-label="Put the last card back" title="Put the last card back" data-t-aria="cantor.back" data-t-title="cantor.back"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg></button>
     <button class="playb" id="playBtn" type="button" aria-label="Start calling" data-t-aria="cantor.start"><svg class="ring" viewBox="0 0 74 74"><circle class="tr" cx="37" cy="37" r="33"/><circle class="pr" id="ringPr" cx="37" cy="37" r="33"/></svg><svg class="ic" id="playIc" viewBox="0 0 24 24" fill="currentColor"></svg></button>
     <button class="nextb" id="nextBtn" type="button"><span data-t="cantor.next">Next card</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h13M13 6l6 6-6 6"/></svg></button>
+    <button class="shufb" id="shufBtn" type="button" aria-label="Shuffle the cards still to come" title="Shuffle the cards still to come" data-t-aria="cantor.shuffleTitle" data-t-title="cantor.shuffleTitle"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 7h3.2c2 0 3.2.9 4.2 2.6l2.2 4.8c1 1.7 2.2 2.6 4.2 2.6h3"/><path d="M3.5 17h3.2c1.3 0 2.3-.4 3.1-1.2M13.9 8.2c.8-.8 1.8-1.2 3.1-1.2h3"/><path d="M17.5 4.5 20 7l-2.5 2.5M17.5 14.5 20 17l-2.5 2.5"/></svg><span data-t="cantor.shuffle">Shuffle</span></button>
     <button class="pacec" id="paceChip" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2M10 2h4"/></svg><span id="paceTxt"></span></button>
     <div class="stat" id="stat" aria-live="polite"></div>
     <div class="seg" id="paceBar" role="group" aria-label="Time between cards" data-t-aria="cantor.paceGroup"><button type="button" data-v="slow" data-t="pace.slow">Slow</button><button type="button" data-v="normal" data-t="pace.normal">Normal</button><button type="button" data-v="fast" data-t="pace.fast">Fast</button></div>
@@ -621,6 +634,24 @@ a.chip{text-decoration:none}
     var s = a.createBufferSource(), f = a.createBiquadFilter(), g = a.createGain();
     s.buffer = buf; f.type = 'bandpass'; f.frequency.value = 2600; f.Q.value = 0.7; g.gain.value = 0.5;
     s.connect(f); f.connect(g); g.connect(a.destination); s.start();
+  }
+  // Shuffle's sound: a riffle, a short tick of noise for each few cards falling, quickest in the middle, then the deck
+  // bridged back together with a brush of softer noise. Noise, like the snap of a card, so nothing beeps.
+  function riffleSound() {
+    var a = ac(); if (!a) return;
+    var sr = a.sampleRate, len = Math.floor(sr * 0.012), buf = a.createBuffer(1, len, sr), d = buf.getChannelData(0), i;
+    for (i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 3);
+    var f = a.createBiquadFilter(), g = a.createGain(); f.type = 'bandpass'; f.frequency.value = 3200; f.Q.value = 0.9; g.gain.value = 0.35;
+    f.connect(g); g.connect(a.destination);
+    var n = 22, t = a.currentTime + 0.02;
+    for (var k = 0; k < n; k++) {
+      var s = a.createBufferSource(); s.buffer = buf; s.playbackRate.value = 0.8 + Math.random() * 0.5; s.connect(f); s.start(t);
+      t += 0.018 + 0.02 * Math.abs(k - n / 2) / (n / 2) + Math.random() * 0.006;
+    }
+    var bl = Math.floor(sr * 0.22), bb = a.createBuffer(1, bl, sr), bd = bb.getChannelData(0);
+    for (i = 0; i < bl; i++) bd[i] = (Math.random() * 2 - 1) * Math.sin(Math.PI * i / bl) * 0.6;
+    var bs = a.createBufferSource(), bf = a.createBiquadFilter(), bg = a.createGain(); bf.type = 'lowpass'; bf.frequency.value = 1800; bg.gain.value = 0.25;
+    bs.buffer = bb; bs.connect(bf); bf.connect(bg); bg.connect(a.destination); bs.start(t + 0.05);
   }
   function fanfare() { var a = ac(); if (!a) return; var t = a.currentTime; [523, 659, 784, 1047, 784, 1047].forEach(function (f, i) { var o = a.createOscillator(), g = a.createGain(); o.type = 'square'; o.frequency.value = f; var s = t + i * 0.11; g.gain.setValueAtTime(0.0001, s); g.gain.exponentialRampToValueAtTime(0.12, s + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, s + (i === 5 ? 0.5 : 0.12)); o.connect(g); g.connect(a.destination); o.start(s); o.stop(s + 0.55); }); }
 
@@ -864,6 +895,26 @@ a.chip{text-decoration:none}
     $('nrOk').addEventListener('click', function () { closeSheet(); newRound(); patternSheet(T('cantor.roundWhat', { r: C.round })); });
     $('nrNo').addEventListener('click', function () { closeSheet(); if (was) play(); });
   }
+  // Shuffle: the cards not called yet go into a new random order, as a caller keeps shuffling the deck between calls.
+  // The cards called, the sábana and the checker stay as they are, and so does calling: it doesn't pause or start,
+  // and the count to the next card carries on. With one card left or none, there's nothing to shuffle.
+  function reshuffle() {
+    if (C.pos >= 53) return;
+    var was = mineRound(), rest = C.order.slice(C.pos);
+    for (var i = rest.length - 1; i > 0; i--) { var j = rand(i + 1), t = rest[i]; rest[i] = rest[j]; rest[j] = t; }
+    C.order = C.order.slice(0, C.pos).concat(rest);
+    if (C.mine && C.mine.round === was) C.mine.round = mineRound(); // the wins on the caller's tablas already looked at stay looked at
+    save(); unlock(); riffleSound(); riffle();
+    prefetch(C.order[C.pos]); preload();
+    toast(T('cantor.shuffled', { n: rest.length }));
+  }
+  // The opening call's riffle: the deck, or the card showing, squared up twice, and the banderitas sway faster.
+  var riffleT = 0;
+  function riffle() {
+    var app = $('app'); clearTimeout(riffleT);
+    app.classList.remove('shuffling'); void app.offsetWidth; app.classList.add('shuffling');
+    riffleT = setTimeout(function () { app.classList.remove('shuffling'); }, 950);
+  }
   function preload() { for (var i = C.pos; i < Math.min(54, C.pos + 2); i++) { var im = new Image(); im.src = src(C.order[i]); } }
 
   // ---------- render ----------
@@ -893,7 +944,7 @@ a.chip{text-decoration:none}
     if (!n) {
       // A phone shows the icons at the top without their words: the first round says what they do, with the same icons.
       var icon = function (id) { return $(id).querySelector('svg').outerHTML; };
-      var icons = C.round === 1 ? '<p class="icons"><span>' + icon('sabBtn') + ' ' + esc(T('cantor.icons.sabana')) + '</span><span>' + icon('printBtn') + ' ' + esc(T('printTablas')) + '</span><span><b aria-hidden="true">⋯</b> ' + esc(T('cantor.icons.more')) + '</span></p>' : '';
+      var icons = C.round === 1 ? '<p class="icons"><span>' + icon('sabBtn') + ' ' + esc(T('cantor.icons.sabana')) + '</span><span>' + icon('printBtn') + ' ' + esc(T('printTablas')) + '</span><span>' + icon('shufTop') + ' ' + esc(T('cantor.icons.shuffle')) + '</span><span><b aria-hidden="true">⋯</b> ' + esc(T('cantor.icons.more')) + '</span></p>' : '';
       el.innerHTML = head + '<h2>' + T('cantor.readyH') + '</h2><p class="ready">' + T('cantor.readyP') + '</p><button class="btn red big" type="button" id="startBtn">' + T('cantor.start') + '</button>' + alongHtml('capAlong') + icons;
       $('startBtn').addEventListener('click', play);
       wireAlong($('capAlong'));
@@ -953,6 +1004,7 @@ a.chip{text-decoration:none}
     $('ringPr').style.strokeDasharray = RC; if (R.phase !== 'waiting') $('ringPr').style.strokeDashoffset = R.playing && R.phase === 'speaking' ? 0 : RC;
     $('backBtn').disabled = !C.pos;
     $('nextBtn').disabled = done;
+    $('shufBtn').disabled = $('shufTop').disabled = C.pos >= 53;
     $('stat').textContent = status();
     document.querySelectorAll('#paceBar button').forEach(function (b) { b.classList.toggle('on', b.dataset.v === C.settings.pace); });
     var secs = (PACE[C.settings.pace] || 4000) / 1000;
@@ -2560,13 +2612,16 @@ a.chip{text-decoration:none}
     if (!wholeDeck(o)) return;
     var vo = (o.settings && o.settings.voice) || '';
     if (vo.indexOf('rec:') === 0 && !RECS.some(function (x) { return 'rec:' + x.id === vo; })) loadRecs(); // recorded in the other window
-    var was = C.round + ':' + C.pos + ':' + C.order.join(), busy = R.playing || R.phase !== 'idle' || R.opening;
+    // A card turned or a new round there stops this one; a Shuffle there only changes the cards still to come, so
+    // this one keeps calling, from the new order, and riffles with it.
+    var called = function () { return C.round + ':' + C.pos + ':' + C.order.slice(0, C.pos).join(); };
+    var was = called(), rest = C.order.slice(C.pos).join(), busy = R.playing || R.phase !== 'idle' || R.opening;
     take(o);
-    if (C.round + ':' + C.pos + ':' + C.order.join() !== was) {
+    if (called() !== was) {
       pause(); hush(); R.phase = 'idle'; R.opening = false;
       showCard(false, true);
       if (busy) toast(T('cantor.otherWindow'));
-    }
+    } else if (C.order.slice(C.pos).join() !== rest) riffle();
     renderTie(); renderCaption(); renderAll();
   }
   window.addEventListener('storage', function (e) { if (e.key === LS && e.newValue) follow(e.newValue); else if (e.key === 'loteria.v1' && C.settings.me) layout(); }); // the caller's tablas changed in My tablas
@@ -2582,6 +2637,8 @@ a.chip{text-decoration:none}
     setPace(v); toast(T('cantor.paceToast', { pace: paceName(v), s: PACE[v] / 1000 }));
   });
   $('nextBtn').addEventListener('click', next);
+  $('shufBtn').addEventListener('click', reshuffle);
+  $('shufTop').addEventListener('click', reshuffle);
   $('backBtn').addEventListener('click', back);
   $('lotBtn').addEventListener('click', shout);
   $('patBtn').addEventListener('click', function () { patternSheet(); });
@@ -2601,6 +2658,7 @@ a.chip{text-decoration:none}
     else if (e.key === 'ArrowLeft') { e.preventDefault(); back(); }
     else if (e.key === 'l' || e.key === 'L') { e.preventDefault(); shout(); }
     else if (e.key === 'r' || e.key === 'R') { e.preventDefault(); again(); }
+    else if (e.key === 's' || e.key === 'S') { e.preventDefault(); reshuffle(); }
     else if ((e.key === 'f' || e.key === 'F') && fsOk()) { e.preventDefault(); fullScreen(!fsOn()); }
   });
   var rT; function relayout() { clearTimeout(rT); rT = setTimeout(function () { picado(); layout(); }, 60); }

@@ -1051,6 +1051,96 @@ check('cantor: back from a pause the next card comes a second later, whatever th
   } finally { await ctx.close(); }
 });
 
+check('cantor: Shuffle puts the cards still to come in a new order, with the riffle and its sound, and calling carries on', async () => {
+  for (const kind of [PHONE, DESKTOP]) {
+    const ctx = await context(kind);
+    try {
+      const page = await ctx.newPage(), problems = watch(page);
+      await page.addInitScript(DEALS);
+      // Counts the sounds made: the riffle is a run of short noises.
+      await page.addInitScript(() => { window.__sources = 0; const A = window.AudioContext; if (A) { const f = A.prototype.createBufferSource; A.prototype.createBufferSource = function () { window.__sources++; return f.call(this); }; const o = A.prototype.createOscillator; A.prototype.createOscillator = function () { window.__beeps = (window.__beeps || 0) + 1; return o.call(this); }; } });
+      const order = run(1, 54);
+      await seed(page, { 'loteria.cantor': { order, pos: 0, round: 1, patterns: ['linea', 'esquinas', 'cuadro'], juego: '', wins: [], last: Date.now(), settings: { speak: false, style: 'name', voice: '', rate: 1, pace: 'slow', sound: true, awake: false, check: false } } });
+      await page.goto(base + 'cantor.html');
+      // Where it is: an icon at the top on a phone held upright, whose bar is full; beside Next card with its word elsewhere.
+      const btn = kind === PHONE ? '#shufTop' : '#shufBtn';
+      assert.deepEqual(await page.evaluate(() => ['shufTop', 'shufBtn'].map(id => !!document.getElementById(id).offsetParent)), kind === PHONE ? [true, false] : [false, true]);
+      if (kind === DESKTOP) assert.equal((await page.textContent('#shufBtn')).trim(), 'Shuffle');
+      assert.equal(await page.getAttribute(btn, 'title'), 'Shuffle the cards still to come');
+      await noSideways(page, 'the bar with Shuffle');
+      // Before the first card: all 54 in a new order, and the round starts from it.
+      await page.click(btn);
+      let st = await saved(page, 'loteria.cantor');
+      assert.equal(st.pos, 0);
+      assert.deepEqual(st.order.slice().sort((a, b) => a - b), order);
+      assert.notDeepEqual(st.order, order, 'the deck wasn’t shuffled');
+      assert.equal(await page.textContent('#toast'), 'Shuffled the 54 cards still to come');
+      assert.ok(await page.evaluate(() => document.getElementById('app').classList.contains('shuffling')), 'no riffle');
+      assert.ok(await page.evaluate(() => window.__sources >= 20), 'no riffle sound');
+      assert.equal(await page.evaluate(() => window.__beeps || 0), 0, 'the riffle beeps');
+      await until(page, () => !document.getElementById('app').classList.contains('shuffling'), null, 3000);
+      const names = await page.evaluate(() => Loteria.CARDS.map(c => c.name)), first = st.order;
+      await page.click('#playBtn');
+      await until(page, () => window.__dealt.length === 1, null, 10000);
+      assert.equal(await page.evaluate(() => window.__dealt[0].name), names[first[0] - 1], 'the first card isn’t the shuffled deck’s');
+      // Mid-round, while it counts to the next card: the called cards stay, the rest change, and it keeps counting.
+      await until(page, () => /^Next card in/.test(document.getElementById('stat').textContent));
+      const before = await saved(page, 'loteria.cantor'), sab = await page.textContent('#sabCount');
+      await page.evaluate(() => { window.__sources = 0; });
+      await page.click(btn);
+      st = await saved(page, 'loteria.cantor');
+      assert.deepEqual(st.order.slice(0, st.pos), before.order.slice(0, before.pos), 'a called card moved');
+      assert.deepEqual(st.order.slice(st.pos).sort((a, b) => a - b), before.order.slice(before.pos).sort((a, b) => a - b));
+      assert.notDeepEqual(st.order.slice(st.pos), before.order.slice(before.pos), 'the cards still to come weren’t shuffled');
+      assert.equal(await page.textContent('#toast'), 'Shuffled the 53 cards still to come');
+      assert.equal(await page.textContent('#sabCount'), sab);
+      assert.match(await page.textContent('#stat'), /^Next card in/, 'Shuffle stopped the count');
+      assert.ok(await page.evaluate(() => window.__sources >= 20), 'no riffle sound mid-round');
+      await until(page, () => window.__dealt.length === 2, null, 10000);
+      assert.equal(await page.evaluate(() => window.__dealt[1].name), names[st.order[1] - 1], 'the next card isn’t from the new order');
+      // Paused, it stays paused; with the sounds off, it riffles quietly; S on the keyboard does it too.
+      await page.click('#playBtn');
+      await until(page, () => document.getElementById('stat').textContent === 'Paused');
+      await page.click('#setBtn'); await page.click('#sndBtn'); await page.click('#stx');
+      await page.evaluate(() => { window.__sources = 0; });
+      const o2 = (await saved(page, 'loteria.cantor')).order;
+      if (kind === DESKTOP) await page.keyboard.press('s'); else await page.click(btn);
+      assert.notDeepEqual((await saved(page, 'loteria.cantor')).order, o2);
+      assert.equal(await page.textContent('#stat'), 'Paused');
+      assert.equal(await page.evaluate(() => window.__sources), 0, 'a sound with the sounds off');
+      // One card left or none: nothing to shuffle.
+      await page.evaluate(() => { const s = JSON.parse(localStorage.getItem('loteria.cantor')); s.pos = 53; localStorage.setItem('loteria.cantor', JSON.stringify(s)); });
+      await page.reload();
+      assert.ok(await page.isDisabled(btn), 'Shuffle with one card left');
+      assert.deepEqual(problems, []);
+    } finally { await ctx.close(); }
+  }
+});
+
+check('cantor: Shuffle in one window changes the order in the other, which keeps calling from it', async () => {
+  const ctx = await context(DESKTOP);
+  try {
+    await ctx.addInitScript(DEALS);
+    const A = await ctx.newPage(), problems = watch(A);
+    await seed(A, { 'loteria.cantor': { order: run(1, 54), pos: 4, round: 1, patterns: ['linea', 'esquinas', 'cuadro'], juego: '', wins: [], settings: { speak: false, sound: false, awake: false, check: false, style: 'name', pace: 'fast' } } });
+    await A.goto(base + 'cantor.html');
+    const B = await ctx.newPage(), problemsB = watch(B);
+    await B.goto(base + 'cantor.html');
+    await B.click('#playBtn');
+    await until(B, () => /^Next card in/.test(document.getElementById('stat').textContent));
+    await A.click('#shufBtn');
+    const st = await saved(A, 'loteria.cantor');
+    // B's first card was the fifth: the first it calls after the Shuffle is the shuffled deck's next one.
+    const k = st.pos - 4;
+    await until(B, n => window.__dealt.length > n, k, 10000);
+    const dealt = await B.evaluate(() => window.__dealt.map(d => d.name)), names = await B.evaluate(() => Loteria.CARDS.map(c => c.name));
+    assert.equal(dealt[k], names[st.order[st.pos] - 1], 'B didn’t call from the shuffled order');
+    assert.ok(!(await B.evaluate(() => window.__toasts)).some(t => /another window/.test(t)), 'B stopped for a Shuffle');
+    await B.click('#playBtn');
+    assert.deepEqual(problems.concat(problemsB), []);
+  } finally { await ctx.close(); }
+});
+
 check('cantor: on a phone the first round says what the icons at the top do, with the same icons', async () => {
   for (const lang of ['en', 'es']) {
     const ctx = await context(PHONE);
@@ -1059,9 +1149,9 @@ check('cantor: on a phone the first round says what the icons at the top do, wit
       await seed(page, { 'loteria.lang': lang, 'loteria.cantor': { order: run(1, 54), pos: 0, round: 1, patterns: ['linea', 'esquinas', 'cuadro'], juego: '', wins: [], last: Date.now(), settings: { speak: false, sound: false, awake: false } } });
       await page.goto(base + 'cantor.html');
       const line = () => page.evaluate(() => { const p = document.querySelector('#cap .icons'); return p && p.offsetParent ? [...p.children].map(s => s.textContent.trim()) : null; });
-      assert.deepEqual(await line(), lang === 'en' ? ['Sábana: every card, as it’s called', 'Print tablas', '⋯ Voice and pace'] : ['Sábana: todas las cartas, según van saliendo', 'Imprimir tablas', '⋯ Voz y ritmo']);
-      const same = await page.evaluate(() => { const svg = document.querySelectorAll('#cap .icons svg'); return [svg[0].outerHTML === document.querySelector('#sabBtn svg').outerHTML, svg[1].outerHTML === document.querySelector('#printBtn svg').outerHTML]; });
-      assert.deepEqual(same, [true, true], 'the line’s icons are the buttons’ own');
+      assert.deepEqual(await line(), lang === 'en' ? ['Sábana: every card, as it’s called', 'Print tablas', 'Shuffle: the cards still to come', '⋯ Voice and pace'] : ['Sábana: todas las cartas, según van saliendo', 'Imprimir tablas', 'Barajar: las cartas que faltan', '⋯ Voz y ritmo']);
+      const same = await page.evaluate(() => { const svg = document.querySelectorAll('#cap .icons svg'); return [svg[0].outerHTML === document.querySelector('#sabBtn svg').outerHTML, svg[1].outerHTML === document.querySelector('#printBtn svg').outerHTML, svg[2].outerHTML === document.querySelector('#shufTop svg').outerHTML]; });
+      assert.deepEqual(same, [true, true, true], 'the line’s icons are the buttons’ own');
       await noSideways(page, 'the icons line');
       await page.click('#nextBtn');
       assert.equal(await line(), null, 'the line stays after the first card');
