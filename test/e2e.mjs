@@ -631,7 +631,7 @@ check('home: El Cantor is the one that prints numbered tablas and Make tablas is
     // El Cantor's pace note names → for the next card, as a phone shows it (it hides the words Next card).
     await page.goto(base + 'cantor.html');
     await page.click('#setBtn');
-    assert.equal(await page.locator('#paceSeg').locator('xpath=../..').locator('.note').textContent(), 'Counted after the card is read. ▶\u00a0turns the next card automatically; →\u00a0turns it now.');
+    assert.equal(await page.locator('#paceSeg').locator('xpath=../..').locator('.note').textContent(), 'Counted after the card is read. ▶\u00a0turns the next card automatically, a second after a pause; →\u00a0turns it now.');
     await seed(page, { 'loteria.v1': ANA });
     await page.goto(base + 'board.html');
     await page.click('#setBtn');
