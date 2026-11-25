@@ -654,23 +654,36 @@ a.chip{text-decoration:none}
     s.buffer = buf; f.type = 'bandpass'; f.frequency.value = 2600; f.Q.value = 0.7; g.gain.value = 0.5;
     s.connect(f); f.connect(g); g.connect(a.destination); s.start();
   }
-  // Shuffle's sound: a riffle, a short tick of noise for each few cards falling, quickest in the middle, then the deck
-  // bridged back together with a brush of softer noise. Noise, like the snap of a card, so nothing beeps.
+  // Shuffle's sound: a deck riffled and bridged, muffled as cards are. The riffle is forty-odd soft little brushes of
+  // low noise, one for each few cards, at uneven gaps short enough that they blur into one papery whir that swells
+  // and dies away; then the deck bridged back together, a lower, softer breath. Noise only, like the snap of a card,
+  // and nothing above about 1.5 kHz to speak of, so it doesn't tick like a card in a bicycle wheel.
   function riffleSound() {
     var a = ac(); if (!a) return;
-    var sr = a.sampleRate, len = Math.floor(sr * 0.012), buf = a.createBuffer(1, len, sr), d = buf.getChannelData(0), i;
-    for (i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 3);
-    var f = a.createBiquadFilter(), g = a.createGain(); f.type = 'bandpass'; f.frequency.value = 3200; f.Q.value = 0.9; g.gain.value = 0.35;
-    f.connect(g); g.connect(a.destination);
-    var n = 22, t = a.currentTime + 0.02;
+    var sr = a.sampleRate, t0 = a.currentTime + 0.02, i;
+    function noise(sec, shape) { var n = Math.floor(sr * sec), b = a.createBuffer(1, n, sr), d = b.getChannelData(0); for (i = 0; i < n; i++) d[i] = (Math.random() * 2 - 1) * shape(i / n); return b; }
+    // Two gentle low-passes in a row take the edge off everything.
+    var lp1 = a.createBiquadFilter(), lp2 = a.createBiquadFilter(), out = a.createGain();
+    lp1.type = lp2.type = 'lowpass'; lp1.frequency.value = 1400; lp2.frequency.value = 1800; lp1.Q.value = lp2.Q.value = 0.5; out.gain.value = 0.9;
+    lp1.connect(lp2); lp2.connect(out); out.connect(a.destination);
+    // One brush: 30 ms, a soft rise and a slow fall, no click at its start.
+    var brush = noise(0.03, function (x) { return x < 0.15 ? Math.sin(x / 0.15 * Math.PI / 2) : Math.pow(1 - (x - 0.15) / 0.85, 2); });
+    var n = 44, t = t0, len = 0.6;
     for (var k = 0; k < n; k++) {
-      var s = a.createBufferSource(); s.buffer = buf; s.playbackRate.value = 0.8 + Math.random() * 0.5; s.connect(f); s.start(t);
-      t += 0.018 + 0.02 * Math.abs(k - n / 2) / (n / 2) + Math.random() * 0.006;
+      var s = a.createBufferSource(), g = a.createGain(), x = k / (n - 1);
+      s.buffer = brush; s.playbackRate.value = 0.55 + Math.random() * 0.3; // slowed: lower, duller
+      g.gain.value = (0.12 + 0.2 * Math.sin(Math.PI * x)) * (0.7 + Math.random() * 0.6); // swells in the middle, uneven
+      s.connect(g); g.connect(lp1); s.start(t);
+      t += len / n * (0.5 + Math.random()); // uneven gaps, so no beat to it
     }
-    var bl = Math.floor(sr * 0.22), bb = a.createBuffer(1, bl, sr), bd = bb.getChannelData(0);
-    for (i = 0; i < bl; i++) bd[i] = (Math.random() * 2 - 1) * Math.sin(Math.PI * i / bl) * 0.6;
-    var bs = a.createBufferSource(), bf = a.createBiquadFilter(), bg = a.createGain(); bf.type = 'lowpass'; bf.frequency.value = 1800; bg.gain.value = 0.25;
-    bs.buffer = bb; bs.connect(bf); bf.connect(bg); bg.connect(a.destination); bs.start(t + 0.05);
+    // Under the riffle, a little body: the deck's weight, very low and quiet.
+    var body = a.createBufferSource(), bf = a.createBiquadFilter(), bgn = a.createGain();
+    body.buffer = noise(len, function (x) { return Math.sin(Math.PI * x); }); bf.type = 'lowpass'; bf.frequency.value = 400; bgn.gain.value = 0.25;
+    body.connect(bf); bf.connect(bgn); bgn.connect(a.destination); body.start(t0);
+    // The bridge: the cards falling back together, a soft low breath.
+    var br = a.createBufferSource(), rf = a.createBiquadFilter(), rg = a.createGain();
+    br.buffer = noise(0.32, function (x) { return Math.pow(Math.sin(Math.PI * x), 1.5); }); rf.type = 'lowpass'; rf.frequency.value = 700; rg.gain.value = 0.35;
+    br.connect(rf); rf.connect(rg); rg.connect(a.destination); br.start(t + 0.06);
   }
   function fanfare() { var a = ac(); if (!a) return; var t = a.currentTime; [523, 659, 784, 1047, 784, 1047].forEach(function (f, i) { var o = a.createOscillator(), g = a.createGain(); o.type = 'square'; o.frequency.value = f; var s = t + i * 0.11; g.gain.setValueAtTime(0.0001, s); g.gain.exponentialRampToValueAtTime(0.12, s + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, s + (i === 5 ? 0.5 : 0.12)); o.connect(g); g.connect(a.destination); o.start(s); o.stop(s + 0.55); }); }
 
