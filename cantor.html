@@ -281,6 +281,14 @@ a.chip{text-decoration:none}
 .mini i.q{background:var(--gold)}
 .pat b{display:block;font:400 15px var(--disp)}
 .pat small{display:block;font-size:11.5px;color:var(--ink2);text-wrap:balance}
+/* Which lines count, under Línea: quick choices, then a little tabla with a handle for each line */
+.lines{grid-column:1/-1;background:var(--paper);border:1px solid var(--teal);border-radius:12px;padding:10px 12px 12px;display:flex;flex-wrap:wrap;gap:10px 16px;align-items:flex-start}
+.lnhd{flex:1 1 100%}.lnhd b{display:block;font:400 15px var(--disp)}.lnhd span{display:block;font-size:12px;color:var(--ink2)}
+.lnq{display:flex;flex-direction:column;align-items:flex-start;gap:6px;order:2}
+.lng{display:grid;grid-template-columns:repeat(6,30px);grid-auto-rows:30px;gap:3px;flex:none}
+.lng i{display:block;border-radius:3px;background:var(--line)}.lng i.on{background:var(--gold)}
+.lh{border:1px solid var(--line2);background:var(--bg);color:var(--ink2);border-radius:8px;font:800 15px/1 var(--body);padding:0;display:flex;align-items:center;justify-content:center;cursor:pointer}
+.lh.on{background:var(--teal);border-color:var(--teal);color:var(--on-teal)}
 /* tabla (verify) */
 .grid{display:grid;grid-template-columns:repeat(4,1fr);grid-template-rows:repeat(4,1fr);gap:2px;background:var(--line2);border:2px solid var(--line2);border-radius:8px;overflow:hidden;aspect-ratio:2/3.26;max-width:100%}
 .cell{position:relative;background:#fff;overflow:hidden}
@@ -533,7 +541,7 @@ a.chip{text-decoration:none}
   // me: the person from My tablas on this device who calls and plays too ('' for nobody), meName their name then.
   function freshSettings() { return { speak: true, style: 'name', voice: '', rate: 1, pace: 'normal', sound: true, awake: true, check: false, two: 'next', late: 'counts', checkWith: '', me: '', meName: '' }; }
   function freshPrint() { return { name: '', count: 12, per: 1, deck: false, paper: L.defaultPaper() }; }
-  function fresh() { return { order: shuffled(), pos: 0, round: 1, patterns: L.CLASICO.slice(), juego: '', printed: {}, wins: [], tie: null, print: freshPrint(), settings: freshSettings() }; }
+  function fresh() { return { order: shuffled(), pos: 0, round: 1, patterns: L.CLASICO.slice(), lines: '', juego: '', printed: {}, wins: [], tie: null, print: freshPrint(), settings: freshSettings() }; }
   var C = fresh();
   function goodWins(w) { return Array.isArray(w) ? w.filter(function (x) { return x && typeof x === 'object'; }).map(function (x) { if (typeof x.t !== 'number') x.t = 0; return x; }) : []; } // a damaged save may hold nulls, or a win with no time
   // How many tablas El Cantor printed of each juego, {CANELA: 12}, so the checker can say a number past them is misheard.
@@ -548,7 +556,9 @@ a.chip{text-decoration:none}
     C.print = Object.assign(pr, freshPrint(), o.print || {});
     C.pos = Math.max(0, Math.min(54, o.pos | 0));
     C.round = Math.max(1, o.round | 0);
-    if (!Array.isArray(C.patterns) || !C.patterns.length) C.patterns = L.CLASICO.slice();
+    C.patterns = Array.isArray(C.patterns) ? C.patterns.filter(function (id) { return typeof id === 'string' && L.pat(id); }) : []; // and Línea on some of its lines, 'linea-0'
+    if (!C.patterns.length) C.patterns = L.CLASICO.slice();
+    if (!L.isLinea(C.lines)) C.lines = '';
     C.wins = goodWins(C.wins);
     C.printed = goodPrinted(C.printed);
     if (typeof C.juego !== 'string') C.juego = '';
@@ -933,7 +943,7 @@ a.chip{text-decoration:none}
   // The game being played, for the whole table to see: each shape's diagram (Clásico as one), and its name.
   function gameShapes() { var both = L.hasClasico(C.patterns); return (both ? ['clasico'] : []).concat(C.patterns.filter(function (id) { return !both || L.CLASICO.indexOf(id) < 0; })).map(L.pat).filter(Boolean); }
   function gameHtml(top, about) {
-    var ps = gameShapes(), what = ps.length === 1 ? T('pat.' + ps[0].id) : T('cantor.anyOne');
+    var ps = gameShapes(), what = ps.length === 1 ? L.patSub(ps[0]) : T('cantor.anyOne');
     return '<span class="minis">' + ps.slice(0, 3).map(miniHtml).join('') + '</span><span class="gt"><small>' + esc(top) + '</small><b>' + esc(L.gameName(C.patterns)) + '</b>' + (about && ps.length ? '<span> — ' + esc(what) + '</span>' : '') + '</span>';
   }
   function renderCaption() {
@@ -1243,13 +1253,16 @@ a.chip{text-decoration:none}
     function draw() {
       var host = $('pats'); host.innerHTML = '';
       PATS.forEach(function (p) {
-        var both = L.hasClasico(C.patterns), on = p.combo ? both : C.patterns.indexOf(p.id) >= 0 && !(both && L.CLASICO.indexOf(p.id) >= 0);
+        var both = L.hasClasico(C.patterns), lin = p.id === 'linea' && !both && L.lineaIn(C.patterns);
+        var on = p.combo ? both : lin || (C.patterns.indexOf(p.id) >= 0 && !(both && L.CLASICO.indexOf(p.id) >= 0));
         var b = document.createElement('button'); b.type = 'button'; b.className = 'pat' + (on ? ' on' : '');
-        b.innerHTML = miniHtml(p) + '<span><b>' + p.name + '</b><small>' + T('pat.' + p.id) + '</small></span>';
+        // Línea shows the lines it's played on: the game's, or else the ones it was last played on here, which a tap picks.
+        function face() { var q = p.id === 'linea' ? L.pat(curLines()) : p; b.innerHTML = miniHtml(q) + '<span><b>' + esc(q.name) + '</b><small>' + esc(L.patSub(q)) + '</small></span>'; }
+        face();
         function pick(add) {
           if (add) toast(L.holdShape(C.patterns, p.id)); // on top of the game, saying what it did
-          else C.patterns = p.combo ? L.CLASICO.slice() : [p.id];
-          save(); draw(); renderTop(); renderMine(); if (!C.pos) renderCaption();
+          else C.patterns = p.combo ? L.CLASICO.slice() : [p.id === 'linea' ? curLines() : p.id];
+          save(); draw(); changed();
         }
         b.addEventListener('pointerdown', function () { clearTimeout(press.t); press.held = false; press.t = setTimeout(function () { press.held = true; pick(true); }, 550); });
         b.addEventListener('pointerup', function () { clearTimeout(press.t); if (press.held) press.held = false; else pick(false); });
@@ -1257,10 +1270,19 @@ a.chip{text-decoration:none}
         b.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pick(e.shiftKey); } });
         b.addEventListener('contextmenu', function (e) { e.preventDefault(); });
         host.appendChild(b);
+        // Which lines count, under Línea while it's the game. A change of lines redraws only the picker and Línea.
+        if (lin) {
+          var ln = document.createElement('div'); ln.className = 'lines'; host.appendChild(ln);
+          L.linePicker(ln, C.patterns, function (id, note) { if (note) { toast(note); return; } C.lines = id; save(); face(); changed(); });
+        }
       });
     }
+    function changed() { renderTop(); renderMine(); renderCaption(); } // the game's name over the card's too
     $('ptx').addEventListener('click', closeSheet); draw();
   }
+  // The lines Línea was last played on here, which a tap on Línea picks: any line until others are chosen.
+  function lastLines() { return L.isLinea(C.lines) ? C.lines : 'linea'; }
+  function curLines() { return (!L.hasClasico(C.patterns) && L.lineaIn(C.patterns)) || lastLines(); } // Clásico's own Línea is any line
 
   function sabanaSheet() {
     openSheet('<div class="hd"><h2>Sábana</h2><span class="eyebrow" id="ssCount"></span><button class="btn sec sm" type="button" id="ssx">' + T('done') + '</button></div><div class="bd"><div class="sbgrid" id="ssgrid"></div></div>');

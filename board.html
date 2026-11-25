@@ -177,6 +177,14 @@ a{color:var(--teal);font-weight:700}
 .pat .mini i.q{background:var(--gold)}
 .pat b{display:block;font:400 15px var(--disp)}
 .pat small{display:block;font-size:11.5px;color:var(--ink2);text-wrap:balance}
+/* Which lines count, under Línea: quick choices, then a little tabla with a handle for each line */
+.lines{grid-column:1/-1;background:var(--paper);border:1px solid var(--teal);border-radius:12px;padding:10px 12px 12px;display:flex;flex-wrap:wrap;gap:10px 16px;align-items:flex-start}
+.lnhd{flex:1 1 100%}.lnhd b{display:block;font:400 15px var(--disp)}.lnhd span{display:block;font-size:12px;color:var(--ink2)}
+.lnq{display:flex;flex-direction:column;align-items:flex-start;gap:6px;order:2}
+.lng{display:grid;grid-template-columns:repeat(6,30px);grid-auto-rows:30px;gap:3px;flex:none}
+.lng i{display:block;border-radius:3px;background:var(--line)}.lng i.on{background:var(--gold)}
+.lh{border:1px solid var(--line2);background:var(--bg);color:var(--ink2);border-radius:8px;font:800 15px/1 var(--body);padding:0;display:flex;align-items:center;justify-content:center;cursor:pointer}
+.lh.on{background:var(--teal);border-color:var(--teal);color:var(--on-teal)}
 /* editor */
 .edb{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:14px}
 .edb .eg{display:grid;grid-template-columns:repeat(4,1fr);gap:2px;background:var(--line2);border:2px solid var(--line2);border-radius:8px;overflow:hidden;aspect-ratio:2/3.26}
@@ -279,6 +287,7 @@ a{color:var(--teal);font-weight:700}
     });
     s.patterns = (Array.isArray(s.patterns) ? s.patterns : []).filter(function (id) { return pat(id); });
     if (!s.patterns.length) s.patterns = CLASICO.slice();
+    if (s.lines != null && !L.isLinea(s.lines)) delete s.lines; // the lines Línea was last played on: 'linea-0' for the top line
     if (!s.settings || typeof s.settings !== 'object') s.settings = fresh().settings;
     if (!s.play || typeof s.play !== 'object' || typeof s.play.juego !== 'string') delete s.play; // El Cantor's link: { juego, t }
     return s;
@@ -516,12 +525,18 @@ a{color:var(--teal);font-weight:700}
     function draw() {
       var host = $('pats'); host.innerHTML = '';
       PATS.forEach(function (p) {
-        var both = L.hasClasico(S.patterns), on = p.combo ? both : S.patterns.indexOf(p.id) >= 0 && !(both && CLASICO.indexOf(p.id) >= 0), show = p.show || p.sets[0];
+        var both = L.hasClasico(S.patterns), lin = p.id === 'linea' && !both && L.lineaIn(S.patterns);
+        var on = p.combo ? both : lin || (S.patterns.indexOf(p.id) >= 0 && !(both && CLASICO.indexOf(p.id) >= 0));
         var b = document.createElement('button'); b.type = 'button'; b.className = 'pat' + (on ? ' on' : '');
-        b.innerHTML = '<span class="mini">' + ALL.map(function (i) { return '<i class="' + (show.indexOf(i) >= 0 ? (p.combo || p.min || (p.sets && p.sets.length > 1) ? 'q' : 'f') : '') + '"></i>'; }).join('') + '</span><span><b>' + p.name + '</b><small>' + T('pat.' + p.id) + '</small></span>';
+        // Línea shows the lines it's played on: the game's, or else the ones it was last played on here, which a tap picks.
+        function face() {
+          var q = p.id === 'linea' ? pat(curLines()) : p, show = q.show || q.sets[0];
+          b.innerHTML = '<span class="mini">' + ALL.map(function (i) { return '<i class="' + (show.indexOf(i) >= 0 ? (q.combo || q.min || (q.sets && q.sets.length > 1) ? 'q' : 'f') : '') + '"></i>'; }).join('') + '</span><span><b>' + esc(q.name) + '</b><small>' + esc(L.patSub(q)) + '</small></span>';
+        }
+        face();
         function pick(add) {
           if (add) toast(L.holdShape(S.patterns, p.id)); // on top of the game, saying what it did
-          else S.patterns = p.combo ? CLASICO.slice() : [p.id];
+          else S.patterns = p.combo ? CLASICO.slice() : [p.id === 'linea' ? curLines() : p.id];
           save(); draw(); G.announced = {}; evaluate(true); render();
         }
         b.addEventListener('pointerdown', function () { clearTimeout(press.t); press.held = false; press.t = setTimeout(function () { press.held = true; pick(true); }, 550); });
@@ -530,10 +545,17 @@ a{color:var(--teal);font-weight:700}
         b.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pick(e.shiftKey); } }); // Shift adds a shape, like holding it
         b.addEventListener('contextmenu', function (e) { e.preventDefault(); });
         host.appendChild(b);
+        // Which lines count, under Línea while it's the game. A change of lines redraws only the picker and Línea.
+        if (lin) {
+          var ln = document.createElement('div'); ln.className = 'lines'; host.appendChild(ln);
+          L.linePicker(ln, S.patterns, function (id, note) { if (note) { toast(note); return; } S.lines = id; save(); face(); G.announced = {}; evaluate(true); render(); });
+        }
       });
     }
     $('ptx').addEventListener('click', closeSheet); draw();
   }
+  // The lines Línea was last played on here, which a tap on Línea picks: any line until others are chosen.
+  function curLines() { return (!L.hasClasico(S.patterns) && L.lineaIn(S.patterns)) || (L.isLinea(S.lines) ? S.lines : 'linea'); } // Clásico's own Línea is any line
 
   function whoSheet() {
     openSheet('<div class="hd"><h2>' + T('board.whoPlaying') + '</h2><button class="btn sec sm" type="button" id="wpx">' + T('done') + '</button></div><div class="bd"><div class="row" id="wplist"></div></div>');
@@ -773,7 +795,7 @@ a{color:var(--teal);font-weight:700}
   // the caller has it. On a first visit nothing is saved before someone is set up, as ever, and the link goes back in
   // the address before a change of language reloads the page.
   function readPlay(h) {
-    var m = /^#g=([a-z.]*)(?:&j=([A-Za-z0-9]*))?$/.exec(h.replace(/[^0-9a-z]+$/i, '')), ids = [];
+    var m = /^#g=([a-z0-9.-]*)(?:&j=([A-Za-z0-9]*))?$/.exec(h.replace(/[^0-9a-z]+$/i, '')), ids = []; // Línea on some lines: linea-0
     if (!m) return null;
     m[1].split('.').forEach(function (id) { (id === 'clasico' ? CLASICO : [id]).forEach(function (x) { var p = pat(x); if (p && !p.combo && ids.indexOf(x) < 0) ids.push(x); }); });
     return ids.length ? { patterns: ids, juego: L.juegoName(m[2] || '') } : null;

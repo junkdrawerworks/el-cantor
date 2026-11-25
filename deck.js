@@ -111,7 +111,54 @@
     { id: 'llena', name: 'Tabla Llena', sub: 'every card', sets: [ALL] }
   ];
   var CLASICO = ['linea', 'esquinas', 'cuadro'];
-  function pat(id) { return PATS.filter(function (p) { return p.id === id; })[0]; }
+  // ---------- Línea's lines ----------
+  // Línea can be played on some of its ten lines only: the top line, say, as some families take Línea to mean. The
+  // lines are numbered as Línea's sets: the rows 0–3 from the top, the columns 4–7 from the left, then the diagonal
+  // from the top left (8) and the one from the top right (9). Such a game's id is 'linea-' and its lines' numbers in
+  // order, 'linea-0' for the top line, 'linea-37' for the bottom and right lines; all ten are plain 'linea', any line.
+  // That id goes everywhere a shape's id goes (saves, El Cantor's link, the checker), so nothing else needs to know.
+  var LINES = PATS[1].sets;
+  function lineId(lines) {
+    var u = []; (lines || []).forEach(function (l) { l = +l; if (l >= 0 && l < 10 && l === (l | 0) && u.indexOf(l) < 0) u.push(l); });
+    u.sort(function (a, b) { return a - b; });
+    return !u.length || u.length === 10 ? 'linea' : 'linea-' + u.join('');
+  }
+  // The lines an id plays, or null for an id that isn't Línea's (or isn't written the one way lineId writes it).
+  function linesOf(id) {
+    if (id === 'linea') return LINES.map(function (s, i) { return i; });
+    var m = /^linea-(\d{1,9})$/.exec(String(id)); if (!m) return null;
+    var ls = m[1].split('').map(Number);
+    return lineId(ls) === id ? ls : null;
+  }
+  function isLinea(id) { return !!linesOf(id); }
+  // A game's Línea, if it plays one: its id.
+  function lineaIn(ids) { return (ids || []).filter(isLinea)[0] || null; }
+  // The name and what it takes, for each line by number, and for the sets with a name of their own; the rest are
+  // "Línea · 3 lines", with the lines on the diagram. Words from strings.js where the page loads it, else English.
+  function lineWords(ls) {
+    var k = ls.join(''), one = T ? T('line.oneSub') : 'only this line counts';
+    if (ls.length === 1) {
+      var NAMES = T ? [T('line.top'), T('line.row2'), T('line.row3'), T('line.bottom'), T('line.left'), T('line.col2'), T('line.col3'), T('line.right'), T('line.diag1'), T('line.diag2')]
+        : ['Top line', 'Second row', 'Third row', 'Bottom line', 'Left line', 'Second column', 'Third column', 'Right line', 'Left diagonal', 'Right diagonal'];
+      return { name: NAMES[ls[0]], sub: ls[0] === 8 ? (T ? T('line.diag1Sub') : 'from the top-left corner down') : ls[0] === 9 ? (T ? T('line.diag2Sub') : 'from the top-right corner down') : one };
+    }
+    if (k === '0123') return { name: T ? T('line.rows') : 'Any row', sub: T ? T('line.rowsSub') : 'any of the four rows' };
+    if (k === '4567') return { name: T ? T('line.cols') : 'Any column', sub: T ? T('line.colsSub') : 'any of the four columns' };
+    if (k === '89') return { name: T ? T('line.diags') : 'Either diagonal', sub: T ? T('line.diagsSub') : 'one diagonal or the other' };
+    if (k === '01234567') return { name: T ? T('line.noDiag') : 'Línea, no diagonals', sub: T ? T('line.noDiagSub') : 'any row or column' };
+    return { name: T ? T('line.some', { n: ls.length }) : 'Línea · ' + ls.length + ' lines', sub: T ? T('line.someSub') : 'any of the lines shown' };
+  }
+  var LINEAS = {};
+  function linePat(id) {
+    if (LINEAS[id]) return LINEAS[id];
+    var ls = linesOf(id); if (!ls || id === 'linea') return null;
+    var w = lineWords(ls), sets = ls.map(function (i) { return LINES[i]; }), show = [];
+    sets.forEach(function (s) { s.forEach(function (c) { if (show.indexOf(c) < 0) show.push(c); }); });
+    return (LINEAS[id] = { id: id, base: 'linea', lines: ls, name: w.name, about: w.sub, sets: sets, show: show.sort(function (a, b) { return a - b; }) });
+  }
+  function pat(id) { return PATS.filter(function (p) { return p.id === id; })[0] || linePat(id) || undefined; }
+  // What a shape takes, under its name: "the four corners".
+  function patSub(p) { return p.about || (T ? T('pat.' + p.id) : p.sub); }
   function hasClasico(ids) { return CLASICO.every(function (x) { return ids.indexOf(x) >= 0; }); }
   function isClasico(ids) { return ids.length === 3 && hasClasico(ids); }
   // The words below come from strings.js on a page that loads it, in the language chosen there; elsewhere (and in
@@ -134,7 +181,7 @@
       ids.splice.apply(ids, [0, ids.length].concat(CLASICO, keep)); return T ? T('shapeAdded', { shape: 'Clásico' }) : 'Clásico added';
     }
     if (both && id !== 'siete') return T ? T('shapeClasico', { shape: p.name }) : 'Clásico already wins with ' + p.name;
-    if (ids.indexOf(id) >= 0) return T ? T('shapeIn', { shape: p.name }) : p.name + ' is already in the game';
+    if (ids.indexOf(id) >= 0 || (id === 'linea' && lineaIn(ids))) return T ? T('shapeIn', { shape: p.name }) : p.name + ' is already in the game';
     ids.push(id); return T ? T('shapeAdded', { shape: p.name }) : p.name + ' added';
   }
 
@@ -269,9 +316,45 @@
   var WORDS = ['CANELA', 'CAJETA', 'ELOTE', 'TAMAL', 'ATOLE', 'POZOLE', 'MANGO', 'PAPAYA', 'JICAMA', 'GUAYABA', 'LIMON', 'NIEVE', 'CHURRO', 'CONCHA', 'PAMBAZO', 'TEJOCOTE', 'COMAL', 'MOLCAJETE', 'PIPIAN', 'HORCHATA', 'TAMARINDO', 'CHAYOTE', 'CAPIROTADA', 'BUNUELO'];
   function randomJuego(not) { var w; do { w = WORDS[Math.floor(Math.random() * WORDS.length)]; } while (w === not); return w; }
 
+  // ---------- the line picker ----------
+  // Under Línea in a game picker, while the game is Línea: which lines count. Any line (the start), the top, bottom,
+  // left or right line in one tap, or any set of the ten tapped in and out on a little tabla: a handle at the start of
+  // each row and column, and at the top corners for the diagonals, the squares of the lines that count lit. ids: the
+  // game, its Línea changed in place; then(id, note) after a tap, with the Línea now played, and a note to show when
+  // the tap changed nothing (the last line can't go: some line has to count).
+  function linePicker(host, ids, then) {
+    var id = lineaIn(ids); if (!id) { host.innerHTML = ''; return; }
+    var ls = linesOf(id), on = {}, lit = {}, all = LINES.map(function (s, i) { return i; });
+    var Q = [['all', T ? T('line.any') : 'Any line', all], ['top', T ? T('line.qTop') : 'Top', [0]], ['bottom', T ? T('line.qBottom') : 'Bottom', [3]], ['left', T ? T('line.qLeft') : 'Left', [4]], ['right', T ? T('line.qRight') : 'Right', [7]]];
+    ls.forEach(function (l) { on[l] = 1; LINES[l].forEach(function (c) { lit[c] = 1; }); });
+    function handle(l, arrow) { var nm = lineWords([l]).name; return '<button type="button" class="lh' + (on[l] ? ' on' : '') + '" data-l="' + l + '" aria-pressed="' + !!on[l] + '" aria-label="' + nm + '" title="' + nm + '">' + arrow + '</button>'; }
+    var g = handle(8, '↘'), c, r, x; for (c = 4; c < 8; c++) g += handle(c, '↓'); g += handle(9, '↙');
+    for (r = 0; r < 4; r++) { g += handle(r, '→'); for (x = 0; x < 4; x++) g += '<i class="' + (lit[r * 4 + x] ? 'on' : '') + '"></i>'; g += '<span></span>'; }
+    var head = T ? T('line.h') : 'Which lines count';
+    host.innerHTML = '<div class="lnhd"><b>' + head + '</b><span>' + (T ? T('line.note') : 'Tap a line’s arrow to add it or take it out.') + '</span></div>' +
+      '<div class="lnq">' + Q.map(function (q) { var o = q[2].join() === ls.join(); return '<button type="button" class="chip' + (o ? ' on' : '') + '" data-q="' + q[0] + '" aria-pressed="' + o + '">' + q[1] + '</button>'; }).join('') + '</div>' +
+      '<div class="lng" role="group" aria-label="' + head + '">' + g + '</div>';
+    function set(next, sel) {
+      var nid = lineId(next); ids[ids.indexOf(id)] = nid;
+      var had = host.contains(document.activeElement);
+      linePicker(host, ids, then);
+      if (had) { var b = host.querySelector(sel); if (b) b.focus({ preventScroll: true }); } // the keyboard stays where it was
+      then(nid);
+    }
+    [].forEach.call(host.querySelectorAll('[data-q]'), function (b) { b.addEventListener('click', function () { set(Q.filter(function (q) { return q[0] === b.dataset.q; })[0][2], '[data-q="' + b.dataset.q + '"]'); }); });
+    [].forEach.call(host.querySelectorAll('.lh'), function (b) {
+      b.addEventListener('click', function () {
+        var l = +b.dataset.l;
+        if (!on[l]) { set(ls.concat(l), '[data-l="' + l + '"]'); return; }
+        if (ls.length === 1) { then(id, T ? T('line.last') : 'One line at least has to count'); return; }
+        set(ls.filter(function (x) { return x !== l; }), '[data-l="' + l + '"]');
+      });
+    });
+  }
+
   window.Loteria = {
     CARDS: CARDS, BYFILE: BYFILE, card: card, src: src, fold: fold, findCards: findCards, originals: originals,
-    PATS: PATS, CLASICO: CLASICO, ALL: ALL, pat: pat, isClasico: isClasico, hasClasico: hasClasico, gameName: gameName, holdShape: holdShape, squaresNeeded: squaresNeeded, check: check, closest: closest, defaultPaper: defaultPaper, confetti: confetti,
+    PATS: PATS, CLASICO: CLASICO, ALL: ALL, pat: pat, patSub: patSub, LINES: LINES, lineId: lineId, linesOf: linesOf, isLinea: isLinea, lineaIn: lineaIn, linePicker: linePicker, isClasico: isClasico, hasClasico: hasClasico, gameName: gameName, holdShape: holdShape, squaresNeeded: squaresNeeded, check: check, closest: closest, defaultPaper: defaultPaper, confetti: confetti,
     juegoName: juegoName, juego: juego, juegoTabla: juegoTabla, randomJuego: randomJuego
   };
 })();

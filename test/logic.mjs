@@ -218,6 +218,84 @@ check('cantor: when a tabla first won is the card that finished its earliest sha
   }
 });
 
+// ---------------------------------------------------------------- Línea on some of its lines
+// The ten lines as the picker draws them: rows from the top, columns from the left, then the diagonal from the top
+// left and the one from the top right. Written out here, not taken from deck.js.
+const LINE10 = [...R4, ...C4, [0, 5, 10, 15], [3, 6, 9, 12]];
+
+check('lines: every set of Línea’s lines has one id, read back the same, and only that id is a game', () => {
+  const L = loadDeck();
+  assert.deepEqual(plain(L.LINES), LINE10, 'Línea’s lines in deck.js');
+  const ids = new Set();
+  for (let m = 1; m < 1 << 10; m++) {
+    const ls = [...Array(10).keys()].filter(i => m >> i & 1), id = L.lineId(ls.slice().reverse().concat(ls)); // in any order, twice
+    assert.equal(id, m === 1023 ? 'linea' : 'linea-' + ls.join(''), JSON.stringify(ls));
+    assert.deepEqual(plain(L.linesOf(id)), ls, id);
+    assert.ok(L.pat(id), id + ' isn’t a game');
+    assert.ok(L.isLinea(id));
+    ids.add(id);
+  }
+  assert.equal(ids.size, 1023);
+  assert.equal(L.lineId([]), 'linea', 'no lines is any line');
+  for (const bad of ['linea-', 'linea-10', 'linea-00', 'linea-0123456789', 'linea-a', 'linea-0 ', 'lineas', 'linea-9-0', 'esquinas-0'])
+    assert.equal(L.pat(bad), undefined, bad + ' is taken for a game');
+  // The names: one line by its place, a few sets by theirs, the rest by how many.
+  const name = id => L.pat(id).name;
+  assert.deepEqual(['linea-0', 'linea-3', 'linea-4', 'linea-7', 'linea-1', 'linea-6', 'linea-8', 'linea-9'].map(name), ['Top line', 'Bottom line', 'Left line', 'Right line', 'Second row', 'Third column', 'Left diagonal', 'Right diagonal']);
+  assert.deepEqual(['linea-0123', 'linea-4567', 'linea-89', 'linea-01234567', 'linea-03', 'linea-0478'].map(name), ['Any row', 'Any column', 'Either diagonal', 'Línea, no diagonals', 'Línea · 2 lines', 'Línea · 4 lines']);
+  assert.equal(L.pat('linea').name, 'Línea');
+  assert.equal(L.gameName(['linea-0']), 'Top line');
+  // The diagram shows the lines that count: their squares.
+  assert.deepEqual(plain(L.pat('linea-03').show), [0, 1, 2, 3, 12, 13, 14, 15]);
+  // Holding Línea on a game that already plays some of its lines adds nothing, and Clásico already wins with any line.
+  const g = ['linea-0'];
+  L.holdShape(g, 'linea'); assert.deepEqual(plain(g), ['linea-0']);
+  L.holdShape(g, 'esquinas'); assert.deepEqual(plain(g), ['linea-0', 'esquinas']);
+  const c = L.CLASICO.slice(); L.holdShape(c, 'linea'); assert.deepEqual(plain(c), plain(L.CLASICO));
+  assert.equal(L.lineaIn(L.CLASICO), 'linea');
+  assert.equal(L.lineaIn(['esquinas', 'linea-37']), 'linea-37');
+});
+
+check('lines: check, closest, the fewest squares and when a tabla first won agree with a brute force on any set of lines', () => {
+  const L = loadDeck(), rnd = seeded(4242), ri = n => Math.floor(rnd() * n);
+  const shuffle = a => { a = a.slice(); for (let i = a.length - 1; i > 0; i--) { const j = ri(i + 1); [a[i], a[j]] = [a[j], a[i]]; } return a; };
+  const html = read('cantor.html'), C = { order: [], pos: 0 };
+  const page = new Function('C', 'L', [fn(html, 'orderOf'), fn(html, 'isOut'), fn(html, 'wonAt'), 'return { wonAt };'].join('\n'))(C, L);
+  let cases = 0;
+  for (let round = 0; round < 6000; round++) {
+    // Any set of lines: often one of the quick ones, else any of the 1023.
+    const quick = [[0], [3], [4], [7]], ls = round % 4 === 0 ? quick[ri(4)] : (() => { let m = 1 + ri(1023); return [...Array(10).keys()].filter(i => m >> i & 1); })();
+    const id = L.lineId(ls), lines = ls.map(i => LINE10[i]);
+    // A tabla of 16 cards, with a double now and then.
+    const t = shuffle(DECK).slice(0, 16); if (round % 3 === 0) t[ri(16)] = t[ri(16)];
+    const out = shuffle(DECK).slice(0, ri(50)), set = new Set(out), called = n => set.has(n);
+    const game = round % 5 === 0 ? [id, 'esquinas'] : [id], other = round % 5 === 0 ? [[0, 3, 12, 15]] : [];
+    const ways = lines.concat(other), what = JSON.stringify({ lines: ls, game, tabla: t, called: out });
+    // check: won exactly when some line that counts (or the other shape) is all called, and names one of them.
+    const brute = ways.filter(w => w.every(c => called(t[c])));
+    const hits = L.check(t, called, game);
+    assert.equal(hits.length > 0, brute.length > 0, 'check: ' + what);
+    for (const h of hits) assert.ok(ways.some(w => w.join() === h.cells.join()) && h.cells.every(c => called(t[c])), 'check names squares that aren’t a line that counts: ' + what);
+    // closest: the fewest squares still to cover on any way that counts.
+    const near = L.closest(t, called, game), need = Math.min(...ways.map(w => w.filter(c => !called(t[c])).length));
+    assert.equal(near.need, need, 'closest: ' + what);
+    assert.ok(ways.some(w => w.join() === near.cells.join()), 'closest on a line that doesn’t count: ' + what);
+    // When it first won, call by call.
+    C.order = out.concat(shuffle(DECK.filter(n => !set.has(n)))); C.pos = out.length;
+    let first = 0; for (let k = 1; k <= C.pos && !first; k++) { const o = new Set(C.order.slice(0, k)); if (ways.some(w => w.every(c => o.has(t[c])))) first = k; }
+    const w = page.wonAt(t, L.pat(id)), wo = other.length ? page.wonAt(t, L.pat('esquinas')) : null, got = [w, wo].filter(Boolean).sort((a, b) => a.when - b.when)[0];
+    assert.equal(got ? got.when : 0, first, 'won on the wrong card: ' + what);
+    cases++;
+  }
+  // The fewest squares: 4 on any set of lines, against every set of squares.
+  for (const ls of [[0], [8], [3, 7], [0, 1, 2, 3, 4, 5, 6, 7]]) {
+    let least = 99; const ways = ls.map(i => LINE10[i]);
+    for (let m = 1; m < 1 << 16; m++) { let k = 0; for (let b = m; b; b &= b - 1) k++; if (k < least && ways.some(w => w.every(c => m >> c & 1))) least = k; }
+    assert.equal(L.squaresNeeded([L.lineId(ls)]), least);
+  }
+  assert.ok(cases === 6000);
+});
+
 // ---------------------------------------------------------------- random tablas
 check('random: My tablas’ Random tabla deals 16 different cards; Make tablas’ Random makes one like Mark’s four, and Fill the rest keeps what’s there', () => {
   const L = loadDeck(), CARDS = L.CARDS, board = read('board.html'), print = read('print.html');

@@ -334,6 +334,13 @@ check('espanol: El Cantor in Spanish, every sheet and the ¡Lotería! box, and t
       assert.equal(await sheetTitle(page), '¿A qué jugamos?');
       await page.locator('#pats .pat', { hasText: 'La Ele' }).press('Shift+Enter');
       assert.equal(await page.textContent('#toast'), 'Clásico ya gana con La Ele');
+      // Línea and which lines count, then back to Clásico.
+      await page.click('#pats .pat:nth-child(2)'); // Línea, after Clásico (whose words say línea too)
+      await page.click('#pats .lnq .chip:text-is("Arriba")');
+      assert.equal(await page.textContent('#patBtn .gn'), 'Línea de arriba');
+      assert.deepEqual(await english(page), [], where + 'English in the line picker');
+      await noSideways(page, 'the line picker in Spanish');
+      await page.locator('#pats .pat', { hasText: 'Clásico' }).first().click();
       await page.click('#ptx');
       if (phone) { await sheet('#sabBtn', 'the sábana'); await page.click('#ssx'); }
       await sheet('#newBtn', 'a new round');
@@ -1980,6 +1987,97 @@ check('cantor: checks a printed tabla by juego and number (CANELA 7 never change
     await page.click('#vfWin');
     assert.deepEqual((await saved(page, 'loteria.cantor')).wins.map(w => [w.round, w.who, w.tabla]), [[1, 'Tío Beto', '']], 'a win counted anyway kept the tabla that wasn’t good');
     assert.deepEqual(problems, []);
+  } finally { await ctx.close(); }
+});
+
+check('games: Línea on the lines chosen, from the picker to the game chip, the checker, the tally, the link and My tablas', async () => {
+  const CANELA7 = [21, 51, 23, 6, 16, 33, 8, 4, 14, 20, 9, 40, 29, 41, 13, 25], top = CANELA7.slice(0, 4), left = [21, 16, 14, 29];
+  const ctx = await context(PHONE);
+  try {
+    const page = await ctx.newPage(), problems = watch(page);
+    // The left column of CANELA 7 has been called, and the top row but its last card, which comes next.
+    const order = left.concat([51, 23, 6]), all = order.concat(run(1, 54).filter(n => order.indexOf(n) < 0));
+    await seed(page, { 'loteria.cantor': { order: all, pos: 6, round: 1, patterns: ['linea', 'esquinas', 'cuadro'], juego: 'CANELA', wins: [], last: Date.now(), settings: { speak: false, sound: false, awake: false, check: true, checkWith: 'printed' } } });
+    await page.goto(base + 'cantor.html');
+    // The picker: Línea, and under it which lines count, any line to start with.
+    await page.click('#patBtn');
+    const pat = name => page.locator('#pats .pat', { hasText: name }).first();
+    assert.equal(await page.locator('#pats .lines').count(), 0, 'Clásico shows the lines');
+    await pat('Línea').click();
+    assert.equal(await page.locator('#pats .lines').count(), 1, 'no line picker under Línea');
+    const chips = () => page.$$eval('#pats .lnq .chip', bs => bs.map(b => b.textContent + (b.classList.contains('on') ? ' ✓' : '')));
+    const handles = () => page.$$eval('#pats .lh', bs => bs.filter(b => b.classList.contains('on')).map(b => b.getAttribute('aria-label')));
+    assert.deepEqual(await chips(), ['Any line ✓', 'Top', 'Bottom', 'Left', 'Right']);
+    assert.equal((await handles()).length, 10);
+    // Top: the top line only, named so on the game chip, in Línea's place and on the little tabla.
+    await page.click('#pats .lnq .chip:text-is("Top")');
+    assert.deepEqual((await saved(page, 'loteria.cantor')).patterns, ['linea-0']);
+    assert.deepEqual(await handles(), ['Top line']);
+    assert.deepEqual(await page.$$eval('#pats .lng i', is => is.flatMap((x, i) => x.classList.contains('on') ? [i] : [])), [0, 1, 2, 3]);
+    assert.match(await page.textContent('#pats .pat.on'), /Top line\s*only this line counts/);
+    assert.equal(await page.textContent('#patBtn .gn'), 'Top line');
+    // The arrows: the left column in, then the top row out; the last line can't go.
+    await page.click('#pats .lh[data-l="4"]');
+    assert.deepEqual((await saved(page, 'loteria.cantor')).patterns, ['linea-04']);
+    assert.equal(await page.textContent('#patBtn .gn'), 'Línea · 2 lines');
+    await page.click('#pats .lh[data-l="0"]');
+    assert.equal(await page.textContent('#patBtn .gn'), 'Left line');
+    await page.click('#pats .lh[data-l="4"]');
+    assert.equal(await page.textContent('#toast'), 'One line at least has to count');
+    assert.deepEqual((await saved(page, 'loteria.cantor')).patterns, ['linea-4']);
+    // Clásico, then Línea again: the lines last chosen here.
+    await pat('Clásico').click();
+    assert.equal(await page.locator('#pats .lines').count(), 0);
+    assert.match(await page.textContent('#pats .pat:nth-child(2)'), /Left line/);
+    await pat('Left line').click();
+    assert.deepEqual((await saved(page, 'loteria.cantor')).patterns, ['linea-4']);
+    await page.click('#pats .lnq .chip:text-is("Top")');
+    await page.click('#ptx');
+    // In view for the table: the line over the card's name.
+    assert.match(await page.textContent('#cap .no'), /Top line/);
+    // The checker: CANELA 7's left column is out, but it's the top line that counts.
+    await page.click('#lotBtn');
+    await page.fill('#vfN', '7');
+    assert.equal(await page.textContent('#vfV h3'), 'Not yet');
+    assert.match(await page.textContent('#vfV p'), /Top line/);
+    assert.deepEqual(await page.$$eval('#vfTabla .cell', cs => cs.flatMap((c, i) => c.classList.contains('need') ? [i] : [])), [3], 'what’s missing isn’t the top line’s square');
+    await page.click('#vfx');
+    await page.click('#nextBtn');
+    await until(page, () => JSON.parse(localStorage.getItem('loteria.cantor')).pos === 7);
+    await page.click('#lotBtn');
+    await page.fill('#vfN', '7');
+    assert.equal(await page.textContent('#vfV h3'), '¡Buena! Top line');
+    assert.deepEqual(await page.$$eval('#vfTabla .cell', cs => cs.flatMap((c, i) => c.classList.contains('hit') ? [i] : [])), [0, 1, 2, 3]);
+    await page.fill('#vfWho', 'Abuela');
+    await page.click('#vfWin');
+    assert.equal((await saved(page, 'loteria.cantor')).wins[0].how, 'Top line', 'the tally');
+    // The play-along link carries the lines.
+    await page.click('#celOk');
+    await page.click('#ptx');
+    const link = await page.evaluate(() => { const b = document.querySelector('#capAlong [data-a="copy"]'); b.click(); return document.querySelector('#capAlong input').value; });
+    assert.match(link, /board\.html#g=linea-0&j=CANELA$/);
+    // My tablas from the link: playing the top line, its own wins and its box say so.
+    const board = await ctx.newPage(), problemsB = watch(board);
+    await board.evaluate(() => 0);
+    await board.goto(base + '__blank');
+    await board.evaluate(t => localStorage.setItem('loteria.v1', JSON.stringify({ players: [{ id: 'ab', name: 'Abuela', boards: [{ id: 'c7', name: 'CANELA 7', cards: t }] }], current: 'ab', patterns: ['linea', 'esquinas', 'cuadro'], settings: { marker: 'bean', sound: false, guide: true } })), CANELA7);
+    await board.goto(base + 'board.html#g=linea-0&j=CANELA');
+    assert.equal(await board.textContent('#toast'), 'Playing Top line, like El Cantor');
+    assert.deepEqual((await saved(board, 'loteria.v1')).patterns, ['linea-0']);
+    const mark = async n => { await board.click('#boards .cell[data-i="' + CANELA7.indexOf(n) + '"]'); };
+    for (const n of left) await mark(n);
+    assert.equal(await board.locator('#winbox:not([hidden])').count(), 0, 'the left column won the top line');
+    for (const n of top.slice(1)) await mark(n);
+    await until(board, () => !document.getElementById('winbox').hidden);
+    assert.match(await board.textContent('#winbox'), /CANELA 7 · Top line/);
+    await board.click('#winOk');
+    // Its own picker shows the lines, and an old link with no lines is any line.
+    await board.click('#patBtn');
+    assert.deepEqual(await board.$$eval('#pats .lnq .chip', bs => bs.filter(b => b.classList.contains('on')).map(b => b.textContent)), ['Top']);
+    await board.click('#ptx');
+    await board.goto(base + 'board.html#g=linea');
+    assert.deepEqual((await saved(board, 'loteria.v1')).patterns, ['linea']);
+    assert.deepEqual(problems.concat(problemsB), []);
   } finally { await ctx.close(); }
 });
 
