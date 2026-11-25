@@ -1003,6 +1003,54 @@ check('cantor: the screen off mid-round pauses calling and says so when it’s b
   } finally { await ctx.close(); }
 });
 
+check('cantor: back from a pause the next card comes a second later, whatever the pace, and the ring counts that second', async () => {
+  const ctx = await context(PHONE);
+  try {
+    const page = await ctx.newPage(), problems = watch(page);
+    await page.addInitScript(DEALS);
+    await seed(page, { 'loteria.cantor': { order: run(1, 54), pos: 3, round: 1, patterns: ['linea', 'esquinas', 'cuadro'], wins: [], settings: { speak: false, style: 'name', voice: '', rate: 1, pace: 'slow', sound: false, awake: false, check: false } } });
+    await page.goto(base + 'cantor.html');
+    const dealt = () => page.evaluate(() => window.__dealt.length);
+    const stat = () => page.textContent('#stat');
+    // Calling at the slow pace: 6 seconds after a card is read.
+    await page.click('#playBtn');
+    await until(page, () => window.__dealt.length === 1);
+    await until(page, () => document.getElementById('stat').textContent === 'Next card in 6s');
+    // Paused while it counts, then ▶: a second, on the ring and in the words, and the card comes.
+    await page.click('#playBtn');
+    assert.equal(await stat(), 'Paused');
+    await page.waitForTimeout(300);
+    const t0 = await page.evaluate(() => { document.getElementById('playBtn').click(); return performance.now(); });
+    assert.equal(await stat(), 'Next card in 1s');
+    await page.waitForTimeout(500);
+    const off = await page.evaluate(() => parseFloat(document.getElementById('ringPr').style.strokeDashoffset) / (2 * Math.PI * 33));
+    assert.ok(off > 0.3 && off < 0.8, 'the ring isn’t counting one second: ' + off);
+    await until(page, () => window.__dealt.length === 2, null, 4000);
+    const gap = await page.evaluate(t => window.__dealt[1].at - t, t0);
+    assert.ok(gap >= 950 && gap < 1600, 'the card came ' + Math.round(gap) + ' ms after ▶');
+    // The card after it waits the pace again.
+    await until(page, () => document.getElementById('stat').textContent === 'Next card in 6s');
+    // Paused mid-count by a tap on the card, and the tap that carries on: a second too.
+    await page.click('#flip');
+    assert.equal(await stat(), 'Paused');
+    const t1 = await page.evaluate(() => { document.getElementById('flip').click(); return performance.now(); });
+    await until(page, () => window.__dealt.length === 3, null, 4000);
+    const gap2 = await page.evaluate(t => window.__dealt[2].at - t, t1);
+    assert.ok(gap2 >= 950 && gap2 < 1600, 'after a tap on the card it came ' + Math.round(gap2) + ' ms later');
+    // The screen off mid-round pauses; back on, the tap on the card brings the next one a second later.
+    await until(page, () => document.getElementById('stat').textContent === 'Next card in 6s');
+    await seen(page, false); await seen(page, true);
+    await until(page, () => window.__toasts.some(t => /screen was off/.test(t)));
+    const t2 = await page.evaluate(() => { document.getElementById('flip').click(); return performance.now(); });
+    assert.equal(await stat(), 'Next card in 1s');
+    await until(page, () => window.__dealt.length === 4, null, 4000);
+    const gap3 = await page.evaluate(t => window.__dealt[3].at - t, t2);
+    assert.ok(gap3 >= 950 && gap3 < 1600, 'back from the screen off it came ' + Math.round(gap3) + ' ms later');
+    assert.equal(await dealt(), 4);
+    assert.deepEqual(problems, []);
+  } finally { await ctx.close(); }
+});
+
 check('cantor: on a phone the first round says what the icons at the top do, with the same icons', async () => {
   for (const lang of ['en', 'es']) {
     const ctx = await context(PHONE);

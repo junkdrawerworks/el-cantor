@@ -170,7 +170,7 @@
       'cantor.style.verse': 'Verse, then name',
       'cantor.style.verseNote': '“El farol de los enamorados… ¡La Luna!” The card turns over right away.',
       'cantor.style.riddleNote': 'Reads the verse with the card face down so the table can guess, then turns it over and says the name.',
-      'cantor.paceNote': 'Counted after the card is read. ▶\u00a0turns the next card automatically; →\u00a0turns it now.', // a phone shows → without the words Next card
+      'cantor.paceNote': 'Counted after the card is read. ▶\u00a0turns the next card automatically, a second after a pause; →\u00a0turns it now.', // a phone shows → without the words Next card
       'cantor.shoutH': 'When someone shouts ¡Lotería!',
       'cantor.trust': 'Take their word',
       'cantor.check': 'Check the tabla',
@@ -801,7 +801,7 @@
       'cantor.style.verse': 'Verso y luego nombre',
       'cantor.style.verseNote': '“El farol de los enamorados… ¡La Luna!” La carta se voltea enseguida.',
       'cantor.style.riddleNote': 'Canta el verso con la carta boca abajo para que la mesa adivine; luego la voltea y dice el nombre.',
-      'cantor.paceNote': 'Se cuenta después de cantar la carta. ▶\u00a0voltea la siguiente solita; →\u00a0la voltea ya.',
+      'cantor.paceNote': 'Se cuenta después de cantar la carta. ▶\u00a0voltea la siguiente solita, un segundo después de una pausa; →\u00a0la voltea ya.',
       'cantor.shoutH': 'Cuando alguien grita ¡Lotería!',
       'cantor.trust': 'Le creemos',
       'cantor.check': 'Revisamos la tabla',

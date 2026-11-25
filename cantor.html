@@ -815,9 +815,12 @@ a.chip{text-decoration:none}
     renderBar();
   }
   function afterCall() { R.phase = 'idle'; if (C.tie && tieCheck()) return; if (!C.tie && mineCheck()) return; if (C.pos >= 54) { finish(); return; } if (R.playing) wait(); else renderBar(); }
-  function wait() {
+  // ms: the wait before the next card, the pace's unless given. Back from a pause it's a second (RESUME), whatever the
+  // pace: ▶ was the signal, so the table doesn't sit through a whole countdown again.
+  var RESUME = 1000;
+  function wait(ms) {
     clearTimeout(R.timer);
-    R.phase = 'waiting'; R.waitMs = PACE[C.settings.pace] || 4000; R.waitStart = performance.now();
+    R.phase = 'waiting'; R.waitMs = ms || PACE[C.settings.pace] || 4000; R.waitStart = performance.now();
     R.timer = setTimeout(function () { R.timer = 0; if (R.playing) deal(); }, R.waitMs);
     renderBar(); ringLoop();
   }
@@ -826,7 +829,7 @@ a.chip{text-decoration:none}
     R.playing = true; unlock(); wake(); if (!VOICES.length) loadVoices();
     if (!C.pos) { begin(); fillVoice(); return; }
     fillVoice();
-    if (R.phase === 'idle') wait(); else renderBar();
+    if (R.phase === 'idle') wait(RESUME); else renderBar();
   }
   function pause() { R.playing = false; clearTimeout(R.timer); R.timer = 0; if (R.phase === 'waiting') R.phase = 'idle'; renderBar(); }
   function begin() {
